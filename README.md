@@ -174,6 +174,14 @@ Use the existing service classes as stable boundaries:
 
 For the competition, this structure gives a working demo now and a clear route to use Google Cloud technologies in the final build.
 
+## Provider Onboarding Docs
+
+- [Channel provider roadmap](docs/providers/README.md)
+- [Authkey SMS and WhatsApp](docs/providers/AUTHKEY_SMS_AND_WHATSAPP.md)
+- [WhatsApp Business Cloud API](docs/providers/WHATSAPP_BUSINESS_CLOUD_API.md)
+- [Vomyra Voice AI](docs/providers/VOMYRA_VOICE_AI.md)
+- [Google Dialogflow](docs/providers/GOOGLE_DIALOGFLOW.md)
+
 ## IP Boundary
 
 This repository is a clean hackathon scaffold. It does not import or copy private business logic, database schemas, app screens, assets, translations, or release code from existing products. The overlap is limited to the public competition domain: crop recommendation, dry-spell advisory, crop health logging, expert follow-up and low-connectivity farmer channels.
