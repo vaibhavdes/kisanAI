@@ -4,6 +4,7 @@ from app.models.schemas import (
     FarmerResponse,
     RiskLevel,
 )
+from app.services.alert_priority_policy import AlertPriorityPolicy
 from app.utils.language import phrase
 
 
@@ -47,6 +48,11 @@ class WeatherService:
             else "Fertilizer application can continue if soil is moist."
         )
 
+        alert_plan = AlertPriorityPolicy().build_plan(
+            risk,
+            reason=f"Dry-spell risk is {risk.value} with {dry_days} dry forecast days.",
+        )
+
         return DrySpellAdvisoryResponse(
             farmer_id=farmer.id,
             crop=payload.crop,
@@ -55,5 +61,5 @@ class WeatherService:
             irrigation_mm=irrigation_mm,
             advisory=advisory,
             fertilizer_note=fertilizer_note,
-            alert_channels=["voice", "sms"],
+            alert_channels=alert_plan.channels,
         )

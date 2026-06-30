@@ -59,6 +59,10 @@ Open:
   - `/api/v1/sms/webhook`
   - `/api/v1/whatsapp/webhook`
   - `/api/v1/calls/webhook`
+  - `/api/v1/advisories/crop-stage`
+  - `/api/v1/soil-cards/extract`
+  - `/api/v1/data/sources`
+  - `/api/v1/conversations/log`
 
 ## Demo API Flow
 
@@ -162,6 +166,11 @@ Use the existing service classes as stable boundaries:
 - `WhatsAppService`: plug WhatsApp Business Cloud API webhook verification, templates and media fetch.
 - `CallService`: plug Exotel, Twilio Voice, Knowlarity or another IVR/call provider callback.
 - `WeatherService`: plug IMD/Open-Meteo/Google weather partner feed and ground sensor ingestion.
+- `GovernmentDataService`: plug data.gov.in, IMD, India-WRIS, Soil Health Card and Agmarknet ingestion.
+- `CropStageAdvisoryService`: add crop-stage rules and Gemini synthesis for sowing through harvest.
+- `SoilCardVisionService`: replace text-parser fallback with Gemini/Vertex AI Vision soil-card extraction.
+- `ConversationStore`: replace in-memory storage with Firestore/Cloud SQL and BigQuery export.
+- `AlertPriorityPolicy`: central policy for WhatsApp/SMS/voice-call escalation.
 
 For the competition, this structure gives a working demo now and a clear route to use Google Cloud technologies in the final build.
 

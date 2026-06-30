@@ -18,6 +18,22 @@ class RiskLevel(StrEnum):
     critical = "critical"
 
 
+class CropStage(StrEnum):
+    sowing = "sowing"
+    germination = "germination"
+    vegetative = "vegetative"
+    flowering = "flowering"
+    harvesting = "harvesting"
+    post_harvest = "post_harvest"
+
+
+class AlertPriority(StrEnum):
+    low = "low"
+    medium = "medium"
+    high = "high"
+    urgent = "urgent"
+
+
 class FarmProfile(BaseModel):
     area_acres: float = Field(gt=0)
     soil_type: str = "unknown"
@@ -86,6 +102,35 @@ class DrySpellAdvisoryResponse(BaseModel):
     alert_channels: list[str]
 
 
+class AlertPlan(BaseModel):
+    priority: AlertPriority
+    channels: list[str]
+    reason: str
+    call_required: bool = False
+
+
+class CropStageAdvisoryRequest(BaseModel):
+    farmer_id: str
+    crop: str
+    stage: CropStage
+    rainfall_forecast_mm: list[float] = Field(default_factory=list, max_length=10)
+    wind_speed_kmph: float | None = Field(default=None, ge=0)
+    humidity_percent: float | None = Field(default=None, ge=0, le=100)
+    soil_moisture: float | None = Field(default=None, ge=0, le=1)
+    disease_risk: RiskLevel | None = None
+
+
+class CropStageAdvisoryResponse(BaseModel):
+    farmer_id: str
+    crop: str
+    stage: CropStage
+    risk_level: RiskLevel
+    advice: str
+    actions: list[str]
+    alert_plan: AlertPlan
+    data_used: dict[str, float | str | None]
+
+
 class DiagnosisRequest(BaseModel):
     farmer_id: str
     crop: str
@@ -118,6 +163,27 @@ class ExpertTicket(BaseModel):
 
 class DiagnosisResponse(DiagnosisResult):
     expert_ticket: ExpertTicket
+
+
+class SoilCardExtractionRequest(BaseModel):
+    farmer_id: str | None = None
+    image_uri: str | None = None
+    extracted_text: str | None = None
+    language: str = "en-IN"
+
+
+class SoilCardExtractionResponse(BaseModel):
+    source: str
+    ph: float | None = None
+    ec: float | None = None
+    organic_carbon: float | None = None
+    nitrogen: str | float | None = None
+    phosphorus: str | float | None = None
+    potassium: str | float | None = None
+    micronutrients: dict[str, str | float] = Field(default_factory=dict)
+    confidence: float = Field(ge=0, le=1)
+    needs_manual_review: bool
+    raw_text: str | None = None
 
 
 class VoiceIntakeRequest(BaseModel):
@@ -174,3 +240,61 @@ class VoiceCallWebhookResponse(BaseModel):
     intent: str
     next_action: str
     should_escalate: bool = False
+
+
+class DatasetReference(BaseModel):
+    name: str
+    provider: str
+    url: str
+    use_case: str
+    integration_status: str = "planned"
+
+
+class GovernmentDataContextRequest(BaseModel):
+    state: str
+    district: str
+    crop: str | None = None
+    season: str | None = None
+
+
+class GovernmentDataContextResponse(BaseModel):
+    state: str
+    district: str
+    crop: str | None = None
+    rainfall_signal: str
+    groundwater_signal: str
+    crop_history_signal: str
+    recommended_datasets: list[DatasetReference]
+
+
+class ConversationRole(StrEnum):
+    farmer = "farmer"
+    assistant = "assistant"
+    expert = "expert"
+    system = "system"
+
+
+class ConversationMessage(BaseModel):
+    farmer_id: str
+    role: ConversationRole
+    text: str
+    language: str = "hi-IN"
+    channel: str = "api"
+    intent: str | None = None
+    metadata: dict[str, str | float | int | bool | None] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class ConversationLogRequest(BaseModel):
+    farmer_id: str
+    role: ConversationRole = ConversationRole.farmer
+    text: str
+    language: str = "hi-IN"
+    channel: str = "api"
+    intent: str | None = None
+    metadata: dict[str, str | float | int | bool | None] = Field(default_factory=dict)
+
+
+class ConversationLogResponse(BaseModel):
+    saved: bool
+    message: ConversationMessage

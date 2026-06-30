@@ -78,6 +78,20 @@ def test_end_to_end_farmer_advisory_and_diagnosis_flow() -> None:
     assert tickets_response.status_code == 200
     assert len(tickets_response.json()) == 1
 
+    stage_response = client.post(
+        "/api/v1/advisories/crop-stage",
+        json={
+            "farmer_id": farmer_id,
+            "crop": "maize",
+            "stage": "flowering",
+            "rainfall_forecast_mm": [0, 0, 0, 0, 1, 0, 2],
+            "humidity_percent": 88,
+            "soil_moisture": 0.19,
+        },
+    )
+    assert stage_response.status_code == 200
+    assert stage_response.json()["alert_plan"]["channels"]
+
 
 def test_low_connectivity_channels_accept_farmer_intent() -> None:
     sms_response = client.post(
@@ -109,3 +123,46 @@ def test_low_connectivity_channels_accept_farmer_intent() -> None:
     )
     assert call_response.status_code == 200
     assert call_response.json()["intent"] == "crop_recommendation"
+
+
+def test_extension_interfaces_for_data_soil_and_conversation() -> None:
+    farmer_id = create_demo_farmer()
+
+    sources_response = client.get("/api/v1/data/sources")
+    assert sources_response.status_code == 200
+    assert any("IMD" in item["provider"] for item in sources_response.json())
+
+    context_response = client.post(
+        "/api/v1/data/context",
+        json={"state": "Andhra Pradesh", "district": "Guntur", "crop": "chilli", "season": "kharif"},
+    )
+    assert context_response.status_code == 200
+    assert context_response.json()["recommended_datasets"]
+
+    soil_response = client.post(
+        "/api/v1/soil-cards/extract",
+        json={
+            "farmer_id": farmer_id,
+            "extracted_text": "pH 6.8 EC 0.42 organic carbon 0.55 nitrogen medium phosphorus 18 potassium high",
+        },
+    )
+    assert soil_response.status_code == 200
+    assert soil_response.json()["ph"] == 6.8
+
+    log_response = client.post(
+        "/api/v1/conversations/log",
+        json={
+            "farmer_id": farmer_id,
+            "role": "farmer",
+            "text": "Should I irrigate today?",
+            "language": "en-IN",
+            "channel": "whatsapp",
+            "intent": "irrigation_advisory",
+        },
+    )
+    assert log_response.status_code == 200
+    assert log_response.json()["saved"] is True
+
+    recent_response = client.get(f"/api/v1/conversations/{farmer_id}")
+    assert recent_response.status_code == 200
+    assert len(recent_response.json()) == 1

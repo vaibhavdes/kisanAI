@@ -30,6 +30,8 @@ flowchart LR
 - Services: `app/services`
   - Crop recommendation, advisory, diagnosis and channel logic.
   - External Google Cloud integrations should stay behind these classes.
+  - `GovernmentDataService`, `CropStageAdvisoryService`, `SoilCardVisionService`,
+    `ConversationStore` and `AlertPriorityPolicy` are the main extension points.
 
 ## Google Cloud Ownership
 
@@ -49,6 +51,11 @@ flowchart LR
   - Production can translate generated advisories and cache by language.
 - Cloud Run: Dockerfile is ready for a container deployment.
 - BigQuery: best fit for public rainfall, soil, groundwater and usage analytics.
+- Alert priority: `AlertPriorityPolicy`
+  - Low: WhatsApp/feed.
+  - Medium: WhatsApp or SMS.
+  - High: WhatsApp + SMS.
+  - Critical: WhatsApp + SMS + voice call.
 
 ## Suggested Team Split
 
