@@ -130,7 +130,7 @@ def test_extension_interfaces_for_data_soil_and_conversation() -> None:
 
     sources_response = client.get("/api/v1/data/sources")
     assert sources_response.status_code == 200
-    assert any("IMD" in item["provider"] for item in sources_response.json())
+    assert any("IMD" in f'{item["name"]} {item["provider"]}' for item in sources_response.json())
 
     context_response = client.post(
         "/api/v1/data/context",

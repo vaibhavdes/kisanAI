@@ -1,5 +1,7 @@
 .env
 .venv/
+.venv-*/
+Details.txt
 __pycache__/
 .pytest_cache/
 .ruff_cache/
@@ -10,4 +12,3 @@ dist/
 build/
 .coverage
 htmlcov/
-

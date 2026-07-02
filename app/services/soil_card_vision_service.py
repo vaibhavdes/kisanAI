@@ -35,7 +35,7 @@ class SoilCardVisionService:
 
     def _number_after(self, text: str, label_pattern: str) -> float | None:
         match = re.search(label_pattern + r"[^0-9]{0,12}([0-9]+(?:\.[0-9]+)?)", text, re.IGNORECASE)
-        return float(match.group(1)) if match else None
+        return float(match.groups()[-1]) if match else None
 
     def _value_after(self, text: str, label_pattern: str) -> str | float | None:
         number = self._number_after(text, label_pattern)

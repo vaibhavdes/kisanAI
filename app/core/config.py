@@ -9,7 +9,12 @@ class Settings(BaseSettings):
     default_language: str = "hi-IN"
     enable_google_integrations: bool = False
     google_cloud_project: str | None = None
+    google_cloud_location: str = "global"
+    gcp_region: str = "asia-south1"
     gemini_api_key: str | None = None
+    gemini_model: str = "gemini-2.5-flash"
+    storage_bucket: str | None = None
+    pubsub_alert_topic: str = "kisan-alerts"
     sms_provider_api_key: str | None = None
     whatsapp_business_token: str | None = None
     voice_call_provider_api_key: str | None = None

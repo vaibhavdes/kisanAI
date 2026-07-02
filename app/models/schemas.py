@@ -102,6 +102,25 @@ class DrySpellAdvisoryResponse(BaseModel):
     alert_channels: list[str]
 
 
+class AdvisoryTestRequest(BaseModel):
+    farmer_name: str = "Demo farmer"
+    language: str = "mr-IN"
+    crop: str = "cotton"
+    crop_stage: str = "vegetative"
+    location: str = "demo village"
+    weather_summary: str = "Heavy rain likely in the next 24 hours."
+    rainfall_forecast_mm: float = Field(default=45, ge=0)
+    soil_moisture: float | None = Field(default=None, ge=0, le=1)
+
+
+class AdvisoryTestResponse(BaseModel):
+    source: str
+    model: str
+    advisory_text: str
+    risk_level: RiskLevel
+    recommended_actions: list[str]
+
+
 class AlertPlan(BaseModel):
     priority: AlertPriority
     channels: list[str]

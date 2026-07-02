@@ -1,0 +1,13 @@
+earthengine-api
+google-cloud-aiplatform
+google-cloud-bigquery
+google-cloud-dialogflow-cx
+google-cloud-firestore
+google-cloud-pubsub
+google-cloud-secret-manager
+google-cloud-speech
+google-cloud-storage
+google-cloud-texttospeech
+google-cloud-translate
+requests
+
