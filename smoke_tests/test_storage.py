@@ -1,6 +1,6 @@
 from common import optional_env, print_ok, require_env, require_package
 
-require_package("google.cloud.storage", "pip install -r requirements-google.txt")
+require_package("google.cloud.storage", "pip install -r requirements.txt")
 
 from google.cloud import storage
 
@@ -13,4 +13,3 @@ exists = bucket.exists()
 if not exists:
     raise RuntimeError(f"Bucket {bucket_name} not found or credentials cannot access it.")
 print_ok(f"Cloud Storage bucket exists: {bucket_name}")
-

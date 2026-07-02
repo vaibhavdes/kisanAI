@@ -53,11 +53,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-For all Google smoke tests:
-
-```bash
-pip install -r requirements-google.txt
-```
+Google SDKs are part of `requirements.txt` because this project is evaluated on Google Cloud usage.
 
 ## Run Backend First
 
@@ -123,7 +119,11 @@ python smoke_tests/test_earth_engine.py
 python smoke_tests/test_maps_geocoding.py
 ```
 
-Do not run `test_all_local.py` until every single service works alone.
+Run each smoke test individually. Do not run everything blindly; each service needs its own API, auth, and sometimes a resource such as a bucket or topic.
+
+Latest smoke-test result notes are tracked in:
+
+- [Google smoke test results](GOOGLE_SMOKE_TEST_RESULTS.md)
 
 ## Development Order
 

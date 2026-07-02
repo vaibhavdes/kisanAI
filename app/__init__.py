@@ -1,2 +1,0 @@
-"""Kisan Alert application package."""
-

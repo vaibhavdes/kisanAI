@@ -1,6 +1,6 @@
 from common import print_ok, require_package
 
-require_package("google.cloud.translate_v3", "pip install -r requirements-google.txt")
+require_package("google.cloud.translate_v3", "pip install -r requirements.txt")
 
 from google.cloud import translate_v3 as translate
 
@@ -22,4 +22,3 @@ response = client.translate_text(
 )
 print(response.translations[0].translated_text)
 print_ok("Translation API responded")
-
