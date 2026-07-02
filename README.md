@@ -178,6 +178,7 @@ For the competition, this structure gives a working demo now and a clear route t
 
 - [Google setup verification](docs/setup/GOOGLE_SETUP_VERIFICATION.md)
 - [Google smoke test results](docs/setup/GOOGLE_SMOKE_TEST_RESULTS.md)
+- [Service fallback plan](docs/setup/SERVICE_FALLBACKS.md)
 - [Channel provider roadmap](docs/providers/README.md)
 - [Authkey SMS and WhatsApp](docs/providers/AUTHKEY_SMS_AND_WHATSAPP.md)
 - [WhatsApp Business Cloud API](docs/providers/WHATSAPP_BUSINESS_CLOUD_API.md)

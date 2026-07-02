@@ -12,21 +12,21 @@ Project used for checks: `kisanai-501120`
 | FastAPI backend | Passed | App imports, runs, `/health` works |
 | `/advisory/test` | Passed | Endpoint returns Gemini advisory JSON with `source: gemini` |
 | Pytest suite | Passed | `3 passed` |
-| Firestore | Blocked | Local Application Default Credentials missing |
-| Cloud Storage | Blocked | Local Application Default Credentials missing |
-| BigQuery | Blocked | Local Application Default Credentials missing |
-| Pub/Sub | Blocked | Local Application Default Credentials missing |
-| Speech-to-Text | Blocked | Local Application Default Credentials missing |
-| Text-to-Speech | Blocked | Local Application Default Credentials missing |
-| Translation API | Blocked | Local Application Default Credentials missing |
-| Secret Manager | Blocked | Local Application Default Credentials missing |
-| Dialogflow CX | Blocked | Local Application Default Credentials missing |
-| Earth Engine | Blocked | Earth Engine account/auth not initialized |
+| Firestore | Blocked | ADC works, but Firestore database is not created |
+| Cloud Storage | Passed | Bucket `kisanai-501120-kisan-ai-media` exists |
+| BigQuery | Passed | BigQuery connected; no datasets yet |
+| Pub/Sub | Passed | Topic `projects/kisanai-501120/topics/kisan-alerts` exists |
+| Speech-to-Text | Blocked | `speech.googleapis.com` is disabled |
+| Text-to-Speech | Blocked | `texttospeech.googleapis.com` is disabled |
+| Translation API | Blocked | `translate.googleapis.com` is disabled |
+| Secret Manager | Passed | Secret Manager connected; 2 secrets visible |
+| Dialogflow CX | Blocked | `dialogflow.googleapis.com` is disabled |
+| Earth Engine | Blocked | `earthengine.googleapis.com` is disabled |
 | Maps Geocoding | Blocked | `MAPS_API_KEY` missing in local `.env` |
 
 Local machine note:
 
-- `gcloud` is not installed, so ADC cannot be created from this terminal yet.
+- ADC now works.
 - No service account JSON was found in the repo.
 
 ## Passed: Gemini
@@ -61,7 +61,51 @@ Result:
 - `/health` returned `status: true`.
 - `/advisory/test` returned `source: gemini` and Marathi advisory JSON.
 
-## Common Failure: ADC Missing
+## Firestore Failure
+
+Observed error:
+
+```text
+The database (default) does not exist for project kisanai-501120
+```
+
+Fix:
+
+```bash
+gcloud firestore databases create --database="(default)" --location=asia-south1
+```
+
+Or use Console:
+
+```text
+Google Cloud Console -> Firestore -> Create database -> Native mode
+```
+
+## Disabled API Failures
+
+Affected services:
+
+- Speech-to-Text
+- Text-to-Speech
+- Translation
+- Dialogflow CX
+- Earth Engine
+
+Fix:
+
+```bash
+gcloud services enable \
+  speech.googleapis.com \
+  texttospeech.googleapis.com \
+  translate.googleapis.com \
+  dialogflow.googleapis.com \
+  earthengine.googleapis.com \
+  --project kisanai-501120
+```
+
+Wait a few minutes and rerun the corresponding smoke tests.
+
+## Old Common Failure: ADC Missing
 
 Affected services:
 
@@ -75,7 +119,7 @@ Affected services:
 - Secret Manager
 - Dialogflow CX
 
-Observed error:
+If seen again, the error is:
 
 ```text
 google.auth.exceptions.DefaultCredentialsError:
