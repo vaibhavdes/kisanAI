@@ -63,6 +63,12 @@ PHRASES = {
         "mr-IN": "पीक सल्ल्यासाठी माती, पाऊस आणि पाण्याची उपलब्धता पाठवा.",
         "te-IN": "పంట సలహా కోసం నేల, వర్షం మరియు నీటి లభ్యత పంపండి.",
     },
+    "sms_location_saved": {
+        "en-IN": "Farm location saved. Ask for water, crop recommendation, or send a crop photo.",
+        "hi-IN": "खेत की लोकेशन सेव हो गई। पानी, फसल सलाह पूछें या फसल की फोटो भेजें।",
+        "mr-IN": "शेताचे लोकेशन सेव झाले. पाणी, पीक सल्ला विचारा किंवा पिकाचा फोटो पाठवा.",
+        "te-IN": "పొలం స్థానం సేవ్ అయింది. నీరు, పంట సలహా అడగండి లేదా పంట ఫోటో పంపండి.",
+    },
     "sms_unknown": {
         "en-IN": "Use WATER, CROP, or PHOTO to get advisory support.",
         "hi-IN": "सलाह के लिए WATER, CROP या PHOTO लिखें।",
@@ -76,7 +82,7 @@ def language_name(code: str) -> str:
     return LANGUAGE_NAMES.get(code, code)
 
 
-def phrase(key: str, language: str, **kwargs: object) -> str:
+def phrase(key: str, locale: str, **kwargs: object) -> str:
     localized = PHRASES.get(key, {})
-    template = localized.get(language) or localized.get("en-IN") or key
+    template = localized.get(locale) or localized.get("en-IN") or key
     return template.format(**kwargs)

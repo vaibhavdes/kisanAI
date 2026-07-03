@@ -428,8 +428,18 @@ class SmsWebhookResponse(BaseModel):
 
 class WhatsAppWebhookRequest(BaseModel):
     from_phone: str
+    message_id: str | None = None
     text: str | None = None
     media_uri: str | None = None
+    media_base64: str | None = None
+    media_mime_type: str | None = None
+    media_type: str | None = None
+    audio_uri: str | None = None
+    audio_base64: str | None = None
+    audio_mime_type: str = "audio/ogg"
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    location_label: str | None = None
     language: str = "hi-IN"
 
 
@@ -438,6 +448,14 @@ class WhatsAppWebhookResponse(BaseModel):
     intent: str
     template_name: str | None = None
     should_escalate: bool = False
+    farmer_id: str | None = None
+    detected_language: str | None = None
+    transcript: str | None = None
+    response_audio_base64: str | None = None
+    response_audio_content_type: str | None = None
+    outbound_provider: str | None = None
+    delivery_status: str = "not_sent"
+    missing_fields: list[str] = Field(default_factory=list)
 
 
 class VoiceCallWebhookRequest(BaseModel):

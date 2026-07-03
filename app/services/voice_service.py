@@ -46,13 +46,14 @@ class VoiceService:
         tts_provider = None
         audio_base64 = None
         audio_content_type = None
-        try:
-            speech = self.speak(VoiceSpeakRequest(farmer_id=farmer.id, text=response, language=language))
-            tts_provider = speech.provider
-            audio_base64 = speech.audio_base64
-            audio_content_type = speech.content_type
-        except VoiceProviderUnavailable:
-            pass
+        if settings.enable_google_integrations:
+            try:
+                speech = self.speak(VoiceSpeakRequest(farmer_id=farmer.id, text=response, language=language))
+                tts_provider = speech.provider
+                audio_base64 = speech.audio_base64
+                audio_content_type = speech.content_type
+            except VoiceProviderUnavailable:
+                pass
         return VoiceIntakeResponse(
             transcript=transcript,
             detected_intent=intent,
@@ -92,7 +93,7 @@ class VoiceService:
 
     def _detect_intent(self, transcript: str) -> str:
         text = transcript.lower()
-        if any(word in text for word in ["water", "irrigation", "pani", "dry"]):
+        if any(word in text for word in ["water", "irrigation", "irrigate", "pani", "dry"]):
             return "irrigation_advisory"
         if any(word in text for word in ["disease", "photo", "leaf", "spot"]):
             return "crop_diagnosis"

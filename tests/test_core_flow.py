@@ -146,6 +146,99 @@ def test_low_connectivity_channels_accept_farmer_intent() -> None:
     assert call_response.json()["intent"] == "crop_recommendation"
 
 
+def test_whatsapp_text_identifies_farmer_and_logs_conversation() -> None:
+    response = client.post(
+        "/api/v1/whatsapp/webhook",
+        json={
+            "from_phone": "+91 99999 88888",
+            "text": "Should I irrigate today?",
+            "language": "en-IN",
+            "message_id": "wa-text-1",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["farmer_id"]
+    assert body["intent"] == "irrigation_advisory"
+    assert body["delivery_status"] in {"skipped_no_authkey", "skipped_no_template", "dry_run"}
+
+    recent = client.get(f"/api/v1/conversations/{body['farmer_id']}")
+    assert recent.status_code == 200
+    assert [item["role"] for item in recent.json()] == ["farmer", "assistant"]
+
+
+def test_whatsapp_location_updates_farmer_farm_coordinates() -> None:
+    response = client.post(
+        "/api/v1/whatsapp/webhook",
+        json={
+            "from_phone": "+91 99999 77777",
+            "latitude": 16.3,
+            "longitude": 80.4,
+            "location_label": "Farm",
+            "language": "te-IN",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["intent"] == "location_update"
+    farmer = store.get_farmer(body["farmer_id"])
+    assert farmer is not None
+    assert farmer.farm.latitude == 16.3
+    assert farmer.farm.longitude == 80.4
+
+
+def test_whatsapp_voice_note_transcribes_and_replies(monkeypatch) -> None:
+    def fake_transcribe(self, payload):
+        return VoiceTranscribeResponse(
+            transcript="Should I irrigate today?",
+            language="en-IN",
+            provider="google_stt",
+        )
+
+    monkeypatch.setattr("app.services.voice_service.VoiceService.transcribe", fake_transcribe)
+
+    response = client.post(
+        "/api/v1/whatsapp/webhook",
+        json={
+            "from_phone": "+91 99999 66666",
+            "audio_base64": base64.b64encode(b"voice").decode("ascii"),
+            "audio_mime_type": "audio/ogg",
+            "media_type": "audio",
+            "language": "en-IN",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["transcript"] == "Should I irrigate today?"
+    assert body["intent"] == "irrigation_advisory"
+
+
+def test_whatsapp_crop_photo_creates_diagnosis_ticket() -> None:
+    response = client.post(
+        "/api/v1/whatsapp/webhook",
+        json={
+            "from_phone": "+91 99999 55555",
+            "text": "chilli leaf has spots",
+            "media_base64": base64.b64encode(b"leaf").decode("ascii"),
+            "media_mime_type": "image/jpeg",
+            "media_type": "image",
+            "language": "en-IN",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["intent"] == "crop_diagnosis"
+    assert body["should_escalate"] is True
+    assert "Ticket:" in body["reply"]
+    tickets = client.get(f"/api/v1/expert/tickets/{body['farmer_id']}")
+    assert tickets.status_code == 200
+    assert len(tickets.json()) == 1
+
+
 def test_voice_transcribe_and_speak_use_configured_fallback(monkeypatch) -> None:
     calls: list[str] = []
 
