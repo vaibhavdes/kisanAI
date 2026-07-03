@@ -14,6 +14,7 @@ from app.models.schemas import (
 from app.repositories.store import store
 from app.services.channel_intent import detect_farmer_intent
 from app.services.conversation_store import ConversationStore
+from app.services.dialogflow_channel_service import DialogflowChannelService, DialogflowChannelUnavailable
 from app.services.expert_service import ExpertService
 from app.services.providers.authkey_client import AuthkeyClient
 from app.services.translation_service import TranslationProviderUnavailable, TranslationService
@@ -38,6 +39,32 @@ class WhatsAppService:
 
         transcript = self._transcribe_voice(payload, detected_language)
         text = transcript or payload.text
+        dialogflow_response = self._dialogflow_response(payload, farmer.id, detected_language, text, transcript)
+        if dialogflow_response:
+            dialogflow_response.farmer_id = farmer.id
+            dialogflow_response.detected_language = detected_language
+            dialogflow_response.missing_fields = identity.missing_fields
+            self._log_farmer_message(
+                farmer.id,
+                text or self._message_summary(payload),
+                detected_language,
+                dialogflow_response.intent,
+                payload,
+            )
+            dialogflow_response.outbound_provider, dialogflow_response.delivery_status = self._send_whatsapp_reply(
+                payload.from_phone,
+                dialogflow_response.reply,
+                dialogflow_response.template_name,
+            )
+            self._log_assistant_message(
+                farmer.id,
+                dialogflow_response.reply,
+                detected_language,
+                dialogflow_response.intent,
+                dialogflow_response,
+            )
+            return dialogflow_response
+
         intent = detect_farmer_intent(
             text,
             payload.media_uri,
@@ -110,6 +137,44 @@ class WhatsAppService:
             intent=intent,
             reply=phrase("sms_unknown", language),
             template_name="main_menu",
+            transcript=transcript,
+        )
+
+    def _dialogflow_response(
+        self,
+        payload: WhatsAppWebhookRequest,
+        farmer_id: str,
+        language: str,
+        text: str | None,
+        transcript: str | None,
+    ) -> WhatsAppWebhookResponse | None:
+        if not text:
+            return None
+        if payload.latitude is not None or payload.longitude is not None:
+            return None
+        if payload.media_type in {"image", "photo", "document"} or payload.media_uri or payload.media_base64:
+            return None
+        try:
+            result = DialogflowChannelService().route_text(
+                text=text,
+                language=language,
+                session_id=f"whatsapp-{farmer_id}",
+                parameters={
+                    "phone": payload.from_phone,
+                    "from_phone": payload.from_phone,
+                    "farmer_id": farmer_id,
+                    "language": language,
+                    "text": text,
+                },
+            )
+        except DialogflowChannelUnavailable:
+            return None
+        if not result.reply:
+            return None
+        return WhatsAppWebhookResponse(
+            intent=result.intent,
+            reply=result.reply,
+            template_name="dialogflow_reply",
             transcript=transcript,
         )
 

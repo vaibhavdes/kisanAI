@@ -23,6 +23,7 @@ from app.models.schemas import (
 from app.repositories.store import store
 from app.services.bigquery_ingestion_service import PublicDataIngestionService
 from app.services.bigquery_public_data_service import BigQueryPublicDataService
+from app.services.dialogflow_channel_service import DialogflowChannelResult
 from app.services.weather_context_service import WeatherContextService
 
 client = TestClient(app)
@@ -155,6 +156,47 @@ def test_low_connectivity_channels_accept_farmer_intent() -> None:
     )
     assert call_response.status_code == 200
     assert call_response.json()["intent"] == "crop_recommendation"
+
+
+def test_channels_use_dialogflow_adapter_when_available(monkeypatch) -> None:
+    def fake_route(self, **kwargs):
+        assert kwargs["language"] == "en-IN"
+        return DialogflowChannelResult(
+            intent="irrigation_advisory",
+            confidence=0.91,
+            reply="Dialogflow says irrigate lightly this evening.",
+            parameters={"crop": "maize"},
+            session_id=kwargs["session_id"],
+        )
+
+    monkeypatch.setattr("app.services.dialogflow_channel_service.DialogflowChannelService.route_text", fake_route)
+
+    sms_response = client.post(
+        "/api/v1/sms/webhook",
+        json={"from_phone": "9999999999", "text": "Should I irrigate?", "language": "en-IN"},
+    )
+    assert sms_response.status_code == 200
+    assert sms_response.json()["reply"].startswith("Dialogflow says")
+
+    whatsapp_response = client.post(
+        "/api/v1/whatsapp/webhook",
+        json={"from_phone": "9999999999", "text": "Should I irrigate?", "language": "en-IN"},
+    )
+    assert whatsapp_response.status_code == 200
+    assert whatsapp_response.json()["intent"] == "irrigation_advisory"
+    assert whatsapp_response.json()["template_name"] == "dialogflow_reply"
+
+    call_response = client.post(
+        "/api/v1/calls/webhook",
+        json={
+            "from_phone": "9999999999",
+            "call_id": "dialogflow-call-1",
+            "transcript": "Should I irrigate?",
+            "language": "en-IN",
+        },
+    )
+    assert call_response.status_code == 200
+    assert call_response.json()["spoken_reply"].startswith("Dialogflow says")
 
 
 def test_whatsapp_text_identifies_farmer_and_logs_conversation() -> None:

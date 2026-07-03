@@ -24,6 +24,11 @@ def health_check() -> dict:
             "speechToText": google_ready or sarvam_ready,
             "textToSpeech": google_ready or sarvam_ready,
             "translation": google_ready or sarvam_ready,
+            "dialogflow": bool(
+                settings.enable_google_integrations
+                and settings.dialogflow_routing_enabled
+                and settings.dialogflow_agent_id
+            ),
             "sms": authkey_ready or bool(settings.sms_provider_api_key),
             "whatsappBusiness": authkey_ready or bool(settings.whatsapp_business_token),
             "voiceCall": authkey_ready or bool(settings.voice_call_provider_api_key),

@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     vertex_ai_model: str = "gemini-2.5-flash"
     storage_bucket: str | None = None
     pubsub_alert_topic: str = "kisan-alerts"
+    dialogflow_routing_enabled: bool = False
+    dialogflow_agent_id: str | None = None
+    dialogflow_location: str | None = None
+    dialogflow_environment_id: str | None = None
+    dialogflow_confidence_threshold: float = 0.45
     sms_provider_api_key: str | None = None
     whatsapp_business_token: str | None = None
     voice_call_provider_api_key: str | None = None

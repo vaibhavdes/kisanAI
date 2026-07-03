@@ -155,6 +155,49 @@ Dialogflow CX official webhook behavior to remember:
 - `fulfillmentResponse` carries the farmer-facing response text.
 - `sessionInfo.parameters` can update parameters for the next page/turn.
 
+## Channel Adapter Status
+
+Implemented optional adapter:
+
+```text
+app/services/dialogflow_channel_service.py
+```
+
+When enabled, these channel handlers try Dialogflow CX first:
+
+```text
+POST /api/v1/whatsapp/webhook
+POST /api/v1/sms/webhook
+POST /api/v1/calls/webhook
+```
+
+If Dialogflow is disabled, not configured, below confidence threshold, or unavailable, the backend falls back to the local router in `channel_intent.py`.
+
+Configuration:
+
+```bash
+ENABLE_GOOGLE_INTEGRATIONS=true
+GOOGLE_CLOUD_PROJECT=kisanai-501120
+DIALOGFLOW_ROUTING_ENABLED=true
+DIALOGFLOW_AGENT_ID=<dialogflow-cx-agent-id>
+DIALOGFLOW_LOCATION=asia-south1
+DIALOGFLOW_CONFIDENCE_THRESHOLD=0.45
+```
+
+Optional:
+
+```bash
+DIALOGFLOW_ENVIRONMENT_ID=<environment-id>
+```
+
+Adapter behavior:
+
+- Sends normalized farmer text/transcript to Dialogflow CX `detectIntent`.
+- Passes session parameters such as `phone`, `from_phone`, `language`, and `text`.
+- Uses Dialogflow fulfillment text directly when present.
+- Keeps local media/location handling in WhatsApp because photos and map points need backend/provider-specific processing.
+- Falls back to local routing without failing the farmer channel if Dialogflow is not ready.
+
 ## Phase 2: Multichannel Dialogflow
 
 1. WhatsApp/SMS/call webhook receives farmer message.
