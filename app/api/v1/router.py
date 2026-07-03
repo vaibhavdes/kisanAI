@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.v1.endpoints import (
+    admin_ui,
     alerts,
     advisory_test,
     advisories,
@@ -23,6 +24,7 @@ from app.api.v1.endpoints import (
 )
 
 api_router = APIRouter()
+api_router.include_router(admin_ui.router, tags=["admin-ui"])
 api_router.include_router(health.router, tags=["health"])
 api_router.include_router(advisory_test.router, tags=["advisory-test"])
 api_router.include_router(providers.router, prefix="/api/v1/providers", tags=["providers"])

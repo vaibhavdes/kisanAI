@@ -116,6 +116,15 @@ def test_end_to_end_farmer_advisory_and_diagnosis_flow() -> None:
     assert stage_response.json()["alert_plan"]["channels"]
 
 
+def test_admin_dashboard_serves_provider_switch_ui() -> None:
+    response = client.get("/admin")
+
+    assert response.status_code == 200
+    assert "Kisan Alert Admin" in response.text
+    assert "/api/v1/providers/config" in response.text
+    assert "/health" in response.text
+
+
 def test_low_connectivity_channels_accept_farmer_intent() -> None:
     sms_response = client.post(
         "/api/v1/sms/webhook",
