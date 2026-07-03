@@ -382,6 +382,31 @@ class VoiceSpeakResponse(BaseModel):
     content_type: str
 
 
+class TranslateTextRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=5000)
+    target_language: str
+    source_language: str | None = None
+    mime_type: str = "text/plain"
+
+
+class TranslateTextResponse(BaseModel):
+    translated_text: str
+    source_language: str | None = None
+    target_language: str
+    provider: str
+
+
+class DetectLanguageRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=1000)
+
+
+class DetectLanguageResponse(BaseModel):
+    language: str | None = None
+    script: str | None = None
+    provider: str
+    confidence: float | None = Field(default=None, ge=0, le=1)
+
+
 class SmsWebhookRequest(BaseModel):
     from_phone: str
     text: str

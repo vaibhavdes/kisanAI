@@ -13,6 +13,8 @@ from app.models.schemas import (
     GovernmentDataContextRequest,
     GovernmentDataContextResponse,
     RiskLevel,
+    DetectLanguageResponse,
+    TranslateTextResponse,
     WeatherContextRequest,
     VoiceSpeakResponse,
     VoiceTranscribeResponse,
@@ -195,6 +197,71 @@ def test_voice_transcribe_and_speak_use_configured_fallback(monkeypatch) -> None
     assert speak_response.status_code == 200
     assert speak_response.json()["provider"] == "sarvam_tts"
     assert calls == ["google_stt", "sarvam_stt", "google_tts", "sarvam_tts"]
+
+
+def test_translation_and_language_detection_use_configured_fallback(monkeypatch) -> None:
+    calls: list[str] = []
+
+    def google_translate_failure(self, payload):
+        calls.append("google_translate")
+        raise RuntimeError("google translate unavailable")
+
+    def sarvam_translate_success(self, payload):
+        calls.append("sarvam_translate")
+        return TranslateTextResponse(
+            translated_text="आज सिंचाई मत करें।",
+            source_language="en-IN",
+            target_language="hi-IN",
+            provider="sarvam_translate",
+        )
+
+    def google_detect_failure(self, payload):
+        calls.append("google_detect")
+        raise RuntimeError("google detect unavailable")
+
+    def sarvam_detect_success(self, payload):
+        calls.append("sarvam_detect")
+        return DetectLanguageResponse(
+            language="hi-IN",
+            script="Deva",
+            provider="sarvam_translate",
+        )
+
+    monkeypatch.setattr(
+        "app.services.translation_service.TranslationService._translate_with_google",
+        google_translate_failure,
+    )
+    monkeypatch.setattr(
+        "app.services.translation_service.TranslationService._translate_with_sarvam",
+        sarvam_translate_success,
+    )
+    monkeypatch.setattr(
+        "app.services.translation_service.TranslationService._detect_with_google",
+        google_detect_failure,
+    )
+    monkeypatch.setattr(
+        "app.services.translation_service.TranslationService._detect_with_sarvam",
+        sarvam_detect_success,
+    )
+
+    translate_response = client.post(
+        "/api/v1/translate/text",
+        json={
+            "text": "Do not irrigate today.",
+            "source_language": "en-IN",
+            "target_language": "hi-IN",
+        },
+    )
+    assert translate_response.status_code == 200
+    assert translate_response.json()["provider"] == "sarvam_translate"
+
+    detect_response = client.post(
+        "/api/v1/translate/detect-language",
+        json={"text": "आज सिंचाई मत करें।"},
+    )
+    assert detect_response.status_code == 200
+    assert detect_response.json()["language"] == "hi-IN"
+    assert calls == ["google_translate", "sarvam_translate", "google_detect", "sarvam_detect"]
 
 
 def test_progressive_farmer_identity_reuses_phone_across_channels() -> None:

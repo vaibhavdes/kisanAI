@@ -20,6 +20,7 @@ STORAGE_BUCKET=kisanai-501120-kisan-ai-media
 PUBSUB_ALERT_TOPIC=kisan-alerts
 MAPS_API_KEY=replace-local-only
 SARVAM_API_KEY=optional-fallback-key
+SARVAM_TRANSLATE_MODEL=mayura:v1
 ```
 
 If a real key was placed in `Details.txt` or `.env.example`, rotate it in Google AI Studio and keep the new value only in `.env`.
