@@ -21,6 +21,7 @@ from app.models.schemas import (
     VoiceTranscribeResponse,
 )
 from app.repositories.store import store
+from app.services.bigquery_ingestion_service import PublicDataIngestionService
 from app.services.bigquery_public_data_service import BigQueryPublicDataService
 from app.services.weather_context_service import WeatherContextService
 
@@ -805,6 +806,71 @@ def test_bigquery_public_context_maps_available_signals() -> None:
     assert context.missing_sources == []
     assert context.rainfall_normal.metadata["month"] == 7
     assert context.soil_health.metadata["ph"] == 6.8
+
+
+def test_bigquery_public_data_ingestion_loads_normalized_csv(tmp_path) -> None:
+    class Job:
+        def result(self):
+            return None
+
+    class Client:
+        def __init__(self):
+            self.loaded_rows = []
+            self.run_rows = []
+            self.table_id = None
+
+        def load_table_from_json(self, rows, table_id, job_config=None):
+            self.loaded_rows.extend(rows)
+            self.table_id = table_id
+            return Job()
+
+        def insert_rows_json(self, table_id, rows):
+            self.run_rows.extend(rows)
+            return []
+
+    csv_path = tmp_path / "rainfall_normals.csv"
+    csv_path.write_text(
+        "state,district,month,normal_rainfall_mm\n"
+        "Andhra Pradesh,Guntur,7,640.5\n",
+        encoding="utf-8",
+    )
+    client = Client()
+
+    result = PublicDataIngestionService(client=client).ingest_csv(
+        source_key="rainfall_normals",
+        csv_path=csv_path,
+        source_name="IMD rainfall normals",
+        source_url="https://dsp.imdpune.gov.in/",
+        source_file_uri="gs://bucket/raw/imd/rainfall_normals.csv",
+    )
+
+    assert result.status == "success"
+    assert result.records_loaded == 1
+    assert client.table_id.endswith(".kisan_ai_curated.district_rainfall_normals")
+    assert client.loaded_rows[0]["month"] == 7
+    assert client.loaded_rows[0]["normal_rainfall_mm"] == 640.5
+    assert client.loaded_rows[0]["source_name"] == "IMD rainfall normals"
+    assert [row["status"] for row in client.run_rows] == ["running", "success"]
+
+
+def test_bigquery_public_data_ingestion_validates_required_columns(tmp_path) -> None:
+    class Client:
+        def insert_rows_json(self, table_id, rows):
+            return []
+
+    csv_path = tmp_path / "bad_groundwater.csv"
+    csv_path.write_text("state,groundwater_depth_m\nMaharashtra,18.2\n", encoding="utf-8")
+
+    try:
+        PublicDataIngestionService(client=Client()).ingest_csv(
+            source_key="groundwater_level",
+            csv_path=csv_path,
+            source_name="Groundwater sample",
+        )
+    except ValueError as exc:
+        assert "district" in str(exc)
+    else:
+        raise AssertionError("Expected required-column validation to fail")
 
 
 def test_advisory_generation_prefers_vertex_and_falls_back_to_gemini(monkeypatch) -> None:

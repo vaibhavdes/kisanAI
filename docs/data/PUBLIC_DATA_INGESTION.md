@@ -69,11 +69,15 @@ gs://kisanai-501120-kisan-ai-public-data/
 
 1. Download or export source files manually from official portals.
 2. Upload unchanged files to `raw/source/yyyy/mm`.
-3. Load raw files into `kisan_ai_raw` using `bq load` or external tables.
-4. Normalize state, district, crop, season, date, and units.
-5. Insert normalized records into `kisan_ai_curated`.
+3. Normalize state, district, crop, season, date, and units into the CSV formats below.
+4. Load normalized CSV rows into `kisan_ai_curated` with `scripts/ingest_public_data.py`.
+5. Keep the unchanged raw file path in `source_file_uri`.
 6. Advisory and recommendation services read only curated tables.
 7. Keep source URL, source file path, license/permission notes, and ingestion timestamp in each table.
+
+## IMD API vs BigQuery
+
+Use the IMD API platform for live or near-real-time products when access is approved: forecast, warnings, nowcast, current observations, and weather products. Use BigQuery for reference or repeatedly queried datasets: historical rainfall normals, downloaded rainfall observations, agromet bulletins, groundwater snapshots, soil summaries, and crop production history. This avoids repeated API calls during advisory generation and makes every recommendation auditable.
 
 ## Why Manual First
 
@@ -95,6 +99,46 @@ gs://kisanai-501120-kisan-ai-public-data/
    - Adds regional yield history for crop recommendation.
 6. `agromet_advisory`
    - Adds official IMD advisory context for Gemini prompt grounding.
+
+## Normalized CSV Load Commands
+
+Run from the project root after `gcloud auth application-default login` or with `GOOGLE_APPLICATION_CREDENTIALS` configured:
+
+```bash
+python scripts/ingest_public_data.py rainfall_normals data/normalized/rainfall_normals.csv \
+  --source-name "IMD rainfall normals" \
+  --source-url "https://dsp.imdpune.gov.in/" \
+  --source-file-uri "gs://kisanai-501120-kisan-ai-public-data/raw/imd_rainfall/source.csv"
+```
+
+Supported `source_key` values:
+
+| source_key | BigQuery table | Required CSV columns |
+|---|---|---|
+| `rainfall_daily` | `district_rainfall_daily` | `state,district,observation_date` |
+| `rainfall_normals` | `district_rainfall_normals` | `state,district,month` |
+| `groundwater_level` | `district_groundwater_level` | `state,district` |
+| `soil_health_summary` | `soil_health_summary` | `state,district` |
+| `crop_production_history` | `crop_production_history` | `state,crop,crop_year` |
+| `agromet_advisory` | `agromet_advisory` | `state,bulletin_date,advisory_text` |
+
+Optional columns are accepted when available:
+
+```text
+rainfall_daily: rainfall_mm
+rainfall_normals: normal_rainfall_mm
+groundwater_level: block, observation_date, groundwater_depth_m, category
+soil_health_summary: block, village, soil_type, ph, organic_carbon, nitrogen, phosphorus, potassium, micronutrients
+crop_production_history: district, season, area_hectare, production_tonne, yield_kg_per_hectare
+agromet_advisory: district, language, crop, risk_tags
+```
+
+Formatting rules:
+
+- Dates use `YYYY-MM-DD`.
+- `risk_tags` can be comma- or pipe-separated, for example `rain|spray|pest`.
+- `micronutrients` should be JSON, for example `{"zinc":"low","boron":"medium"}`.
+- Every load writes `running`, then `success` or `failed`, into `kisan_ai_ops.ingestion_runs`.
 ## Service Usage Rule
 
 For every advisory decision, store the sources used:
