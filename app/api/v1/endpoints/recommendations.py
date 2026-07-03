@@ -16,7 +16,6 @@ def recommend_crop(payload: CropRecommendationRequest) -> CropRecommendationResp
 
     ndvi = payload.ndvi
     if ndvi is None and farmer.farm.latitude is not None and farmer.farm.longitude is not None:
-        ndvi = EarthEngineService().get_demo_ndvi(farmer.farm.latitude, farmer.farm.longitude).ndvi
+        ndvi = EarthEngineService().get_ndvi(farmer.farm.latitude, farmer.farm.longitude).ndvi
 
     return RecommendationEngine().recommend(farmer=farmer, payload=payload, ndvi=ndvi)
-

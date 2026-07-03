@@ -12,6 +12,7 @@ Use local `.env` only:
 GOOGLE_CLOUD_PROJECT=kisanai-501120
 GOOGLE_CLOUD_LOCATION=global
 GCP_REGION=asia-south1
+FIRESTORE_DATABASE=kisanai
 GEMINI_API_KEY=replace-with-rotated-local-key
 GEMINI_MODEL=gemini-2.5-flash
 STORAGE_BUCKET=kisanai-501120-kisan-ai-media
@@ -30,7 +31,7 @@ If a real key was placed in `Details.txt` or `.env.example`, rotate it in Google
 | Gemini SDK | Added via `google-genai` |
 | `test_gemini.py` | Added under `smoke_tests/` |
 | First endpoint | Added: `POST /advisory/test` and `POST /api/v1/advisory/test` |
-| Firestore interface | Smoke test added; app repository still in-memory |
+| Firestore interface | Smoke test added for named database `kisanai`; Firestore repository implementation is next |
 | Cloud Storage interface | Smoke test added |
 | Speech-to-Text interface | Smoke test added |
 | Text-to-Speech interface | Smoke test added |
@@ -117,9 +118,13 @@ python smoke_tests/test_secret_manager.py
 python smoke_tests/test_dialogflow.py
 python smoke_tests/test_earth_engine.py
 python smoke_tests/test_maps_geocoding.py
+python smoke_tests/test_authkey_balance.py
+python smoke_tests/test_authkey_channels.py
 ```
 
 Run each smoke test individually. Do not run everything blindly; each service needs its own API, auth, and sometimes a resource such as a bucket or topic.
+
+Authkey channel tests are dry-run by default unless `AUTHKEY_SEND_ENABLED=true`.
 
 Latest smoke-test result notes are tracked in:
 
@@ -130,17 +135,17 @@ Latest smoke-test result notes are tracked in:
 Build feature-by-feature:
 
 1. `/advisory/test`
-   - Gemini advisory with sample farmer/weather data.
+   - Gemini advisory with farmer/weather data.
 2. `/api/v1/farmers`
-   - Already exists in-memory; next replace repository with Firestore.
+   - Implement Firestore repository.
 3. `/advisory/active-crop`
-   - Read farmer, weather sample, Gemini advisory, save advisory.
+   - Read farmer, weather context, Gemini advisory, save advisory.
 4. `/vision/crop-health`
    - Upload crop image, Gemini multimodal diagnosis, expert ticket.
 5. `/vision/soil-card`
    - Upload soil card, extract pH/NPK/organic carbon.
 6. `/api/v1/recommendations/crop`
-   - Already exists with demo engine; next connect BigQuery/Earth Engine.
+   - Connect BigQuery and Earth Engine.
 7. `/voice/transcribe`
    - Audio to text.
 8. `/voice/speak`

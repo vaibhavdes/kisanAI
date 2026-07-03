@@ -11,7 +11,32 @@ Official links:
 
 - SMS fallback when WhatsApp is unavailable.
 - WhatsApp Business API test/demo if Meta direct onboarding takes longer.
+- Voice-call fallback for high-priority alerts such as severe dry-spell, flood, pest, or disease risk.
 - OTP or verification can be added later, but not needed for hackathon MVP.
+
+## Local Environment
+
+Keep credentials only in local `.env` or Secret Manager:
+
+```env
+AUTHKEY_API_KEY=local-only
+AUTHKEY_TEST_MOBILE=9970000000
+AUTHKEY_TEST_COUNTRY_CODE=91
+AUTHKEY_SMS_SENDER=KISAN
+AUTHKEY_WHATSAPP_TEMPLATE_ID=approved-template-id
+AUTHKEY_WHATSAPP_MEDIA_TEMPLATE_ID=approved-media-template-id
+AUTHKEY_SEND_ENABLED=false
+```
+
+`AUTHKEY_SEND_ENABLED=false` is intentional. It lets smoke tests verify request construction without sending SMS, WhatsApp, or voice calls.
+
+Enable real sending only for a controlled demo:
+
+```bash
+AUTHKEY_SEND_ENABLED=true .venv-google/bin/python smoke_tests/test_authkey_channels.py
+```
+
+This can send multiple messages/calls to `AUTHKEY_TEST_MOBILE`, so keep it off in CI and normal local checks.
 
 ## Phase 0: Local Mock
 
@@ -48,10 +73,42 @@ WHATSAPP_PROVIDER=authkey
 WHATSAPP_BUSINESS_TOKEN=...
 ```
 
-7. Implement adapter methods later:
+7. Use the adapter methods:
    - `send_sms(phone, text)`
-   - `send_whatsapp_text(phone, text)`
-   - `send_whatsapp_template(phone, template_name, params)`
+   - `send_voice(phone, text)`
+   - `send_parallel_sms_voice(phone, sms, voice)`
+   - `send_voice_with_sms_fallback(phone, voice, fallback_sms)`
+   - `send_whatsapp_template_get(phone, template_id, params)`
+   - `send_whatsapp_template_json(phone, template_id, params)`
+   - `send_whatsapp_media_template_get(phone, template_id, media_url)`
+   - `send_whatsapp_bulk_template_json(phones, template_id, params)`
+
+## Smoke Tests
+
+Balance/account check calls Authkey for real:
+
+```bash
+.venv-google/bin/python smoke_tests/test_authkey_balance.py
+```
+
+Channel scenario check defaults to dry-run:
+
+```bash
+.venv-google/bin/python smoke_tests/test_authkey_channels.py
+```
+
+Covered scenarios:
+
+- SMS direct send.
+- Voice direct call.
+- Parallel SMS + voice.
+- Voice with SMS fallback.
+- WhatsApp template using GET.
+- WhatsApp template using JSON POST.
+- WhatsApp media template using GET.
+- WhatsApp bulk template JSON API.
+
+WhatsApp sends need approved Authkey/WhatsApp template IDs. Without real template IDs, keep dry-run enabled.
 
 ## Phase 2: Production-Like Pilot
 
@@ -67,11 +124,10 @@ WHATSAPP_BUSINESS_TOKEN=...
 
 ## Adapter Shape
 
-Create later:
+Implemented:
 
 ```text
-app/services/providers/authkey_sms_provider.py
-app/services/providers/authkey_whatsapp_provider.py
+app/services/providers/authkey_client.py
 ```
 
 Each adapter should return a normalized result:
@@ -91,4 +147,3 @@ Each adapter should return a normalized result:
 - Trial limits may be small.
 - SMS delivery in India can require templates/DLT even if API integration is simple.
 - WhatsApp business-initiated messages usually require approved templates.
-

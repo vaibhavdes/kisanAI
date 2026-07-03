@@ -26,7 +26,7 @@ class RecommendationEngine:
                 "rainfall": payload.expected_rainfall_mm,
                 "groundwaterDepthM": farmer.farm.groundwater_depth_m,
                 "ndvi": ndvi,
-                "satellite": "demo_earth_engine_adapter" if ndvi is not None else None,
+                "satellite": "earth_engine_or_request_context" if ndvi is not None else None,
             },
         )
 
@@ -108,6 +108,5 @@ class RecommendationEngine:
             water_fit=water_fit,
             soil_fit=soil_fit,
             reasons=reasons[:4],
-            next_action=f"{crop.notes} Verify seed/sapling availability and local market before sowing.",
+            next_action=f"{crop.notes} Verify soil, water availability, and local agronomy advice before sowing.",
         )
-

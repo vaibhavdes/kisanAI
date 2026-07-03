@@ -1,5 +1,6 @@
 import importlib
 import os
+import sys
 from pathlib import Path
 
 try:
@@ -9,6 +10,7 @@ except ImportError as exc:
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 load_dotenv(ROOT / ".env")
 
 
@@ -32,4 +34,3 @@ def require_package(module_name: str, install_hint: str) -> None:
 
 def print_ok(message: str) -> None:
     print(f"OK: {message}")
-

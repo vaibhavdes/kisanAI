@@ -34,6 +34,65 @@ class AlertPriority(StrEnum):
     urgent = "urgent"
 
 
+class ProviderFeature(StrEnum):
+    weather = "weather"
+    stt = "stt"
+    tts = "tts"
+    translation = "translation"
+    llm_advisory = "llm_advisory"
+    vision_ocr = "vision_ocr"
+    satellite = "satellite"
+    geocoding_maps = "geocoding_maps"
+    whatsapp = "whatsapp"
+    sms_voice = "sms_voice"
+
+
+class ProviderName(StrEnum):
+    imd = "imd"
+    open_meteo = "open_meteo"
+    google_stt = "google_stt"
+    sarvam_stt = "sarvam_stt"
+    google_tts = "google_tts"
+    sarvam_tts = "sarvam_tts"
+    google_translate = "google_translate"
+    sarvam_translate = "sarvam_translate"
+    gemini = "gemini"
+    vertex_ai = "vertex_ai"
+    gemini_vision = "gemini_vision"
+    vertex_ai_vision = "vertex_ai_vision"
+    earth_engine = "earth_engine"
+    google_maps = "google_maps"
+    osm_nominatim = "osm_nominatim"
+    authkey = "authkey"
+    twilio = "twilio"
+
+
+class ProviderRoute(BaseModel):
+    feature: ProviderFeature
+    primary: ProviderName
+    secondary: ProviderName | None = None
+    allow_fallback: bool = True
+    enabled: bool = True
+    note: str | None = None
+
+
+class ProviderConfigResponse(BaseModel):
+    routes: list[ProviderRoute]
+    updated_at: datetime
+
+
+class ProviderRouteUpdate(BaseModel):
+    primary: ProviderName | None = None
+    secondary: ProviderName | None = None
+    allow_fallback: bool | None = None
+    enabled: bool | None = None
+    note: str | None = None
+
+
+class ProviderConfigUpdate(BaseModel):
+    routes: dict[ProviderFeature, ProviderRouteUpdate]
+
+
 class FarmProfile(BaseModel):
     area_acres: float = Field(gt=0)
     soil_type: str = "unknown"

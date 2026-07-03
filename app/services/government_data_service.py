@@ -50,12 +50,6 @@ class GovernmentDataService:
                 url="https://indiawris.gov.in/wris/",
                 use_case="Water resources and groundwater context for crop water-risk scoring.",
             ),
-            DatasetReference(
-                name="Agmarknet",
-                provider="Directorate of Marketing and Inspection",
-                url="https://agmarknet.gov.in/",
-                use_case="Mandi price and arrival data for optional profitability layer.",
-            ),
         ]
 
     def build_context(self, payload: GovernmentDataContextRequest) -> GovernmentDataContextResponse:
@@ -76,4 +70,3 @@ class GovernmentDataService:
             ),
             recommended_datasets=self.list_sources(),
         )
-

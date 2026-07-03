@@ -43,6 +43,7 @@ def test_end_to_end_farmer_advisory_and_diagnosis_flow() -> None:
             "farmer_id": farmer_id,
             "season": "kharif",
             "expected_rainfall_mm": 620,
+            "ndvi": 0.42,
             "water_availability": "medium",
         },
     )
@@ -166,3 +167,36 @@ def test_extension_interfaces_for_data_soil_and_conversation() -> None:
     recent_response = client.get(f"/api/v1/conversations/{farmer_id}")
     assert recent_response.status_code == 200
     assert len(recent_response.json()) == 1
+
+
+def test_provider_config_can_be_switched_by_feature() -> None:
+    config_response = client.get("/api/v1/providers/config")
+    assert config_response.status_code == 200
+    routes = {item["feature"]: item for item in config_response.json()["routes"]}
+    assert routes["weather"]["primary"] == "imd"
+    assert routes["weather"]["secondary"] == "open_meteo"
+    assert routes["satellite"]["primary"] == "earth_engine"
+    assert routes["satellite"]["allow_fallback"] is False
+
+    update_response = client.patch(
+        "/api/v1/providers/config",
+        json={
+            "routes": {
+                "weather": {
+                    "primary": "open_meteo",
+                    "secondary": "imd",
+                    "note": "Temporary demo switch.",
+                }
+            }
+        },
+    )
+    assert update_response.status_code == 200
+    updated = {item["feature"]: item for item in update_response.json()["routes"]}
+    assert updated["weather"]["primary"] == "open_meteo"
+    assert updated["weather"]["secondary"] == "imd"
+
+    invalid_response = client.patch(
+        "/api/v1/providers/config",
+        json={"routes": {"satellite": {"primary": "earth_engine", "secondary": "osm_nominatim"}}},
+    )
+    assert invalid_response.status_code == 400

@@ -7,8 +7,8 @@ class SoilCardVisionService:
     def extract(self, payload: SoilCardExtractionRequest) -> SoilCardExtractionResponse:
         if payload.image_uri and not payload.extracted_text:
             return SoilCardExtractionResponse(
-                source="vision_placeholder",
-                confidence=0.35,
+                source="vision_provider_required",
+                confidence=0.0,
                 needs_manual_review=True,
                 raw_text=None,
             )

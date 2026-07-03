@@ -1,5 +1,5 @@
 from app.models.schemas import FarmerResponse, VoiceIntakeRequest, VoiceIntakeResponse
-from app.utils.language import language_name, phrase
+from app.utils.language import phrase
 
 
 class VoiceService:
@@ -13,7 +13,7 @@ class VoiceService:
             detected_intent=intent,
             response_text=response,
             response_language=language,
-            audio_url=f"demo://tts/{language_name(language).lower()}",
+            audio_url=None,
         )
 
     def _detect_intent(self, transcript: str) -> str:
@@ -33,4 +33,4 @@ class VoiceService:
             return phrase("diagnosis_response", language, name=name)
         if intent == "crop_recommendation":
             return phrase("crop_response", language, name=name)
-        return phrase("general_response", language, name=name, language=language_name(language))
+        return phrase("general_response", language, name=name, language=language)

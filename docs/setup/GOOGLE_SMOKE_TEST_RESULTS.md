@@ -1,6 +1,6 @@
 # Google Smoke Test Results
 
-Date: 2026-07-02
+Date: 2026-07-03
 
 Project used for checks: `kisanai-501120`
 
@@ -12,22 +12,25 @@ Project used for checks: `kisanai-501120`
 | FastAPI backend | Passed | App imports, runs, `/health` works |
 | `/advisory/test` | Passed | Endpoint returns Gemini advisory JSON with `source: gemini` |
 | Pytest suite | Passed | `3 passed` |
-| Firestore | Blocked | ADC works, but Firestore database is not created |
+| Firestore | Passed | Named database `kisanai` connected |
 | Cloud Storage | Passed | Bucket `kisanai-501120-kisan-ai-media` exists |
 | BigQuery | Passed | BigQuery connected; no datasets yet |
 | Pub/Sub | Passed | Topic `projects/kisanai-501120/topics/kisan-alerts` exists |
-| Speech-to-Text | Blocked | `speech.googleapis.com` is disabled |
-| Text-to-Speech | Blocked | `texttospeech.googleapis.com` is disabled |
-| Translation API | Blocked | `translate.googleapis.com` is disabled |
+| Speech-to-Text | Passed | API responded with demo silent audio |
+| Text-to-Speech | Passed | API generated demo audio bytes |
+| Translation API | Passed | API translated Marathi text to English |
 | Secret Manager | Passed | Secret Manager connected; 2 secrets visible |
-| Dialogflow CX | Blocked | `dialogflow.googleapis.com` is disabled |
-| Earth Engine | Blocked | `earthengine.googleapis.com` is disabled |
-| Maps Geocoding | Blocked | `MAPS_API_KEY` missing in local `.env` |
+| Dialogflow CX | Passed | API connected; no agents created yet |
+| Earth Engine | Passed | Earth Engine initialized and computed demo geometry area |
+| Maps Geocoding | Passed | API key works for Geocoding API |
+| Authkey Balance | Passed | Authkey balance API responded |
+| Authkey Channels | Passed | SMS, voice, voice fallback, WhatsApp template/media/bulk scenarios build in dry-run |
 
 Local machine note:
 
 - ADC now works.
-- No service account JSON was found in the repo.
+- No service account JSON is tracked in the repo.
+- Local `.env` uses `FIRESTORE_DATABASE=kisanai` because the project was created with a named Firestore database instead of `(default)`.
 
 ## Passed: Gemini
 
@@ -61,49 +64,45 @@ Result:
 - `/health` returned `status: true`.
 - `/advisory/test` returned `source: gemini` and Marathi advisory JSON.
 
-## Firestore Failure
+## Passed: Firestore
 
-Observed error:
-
-```text
-The database (default) does not exist for project kisanai-501120
-```
-
-Fix:
+Command:
 
 ```bash
-gcloud firestore databases create --database="(default)" --location=asia-south1
+.venv-google/bin/python smoke_tests/test_firestore.py
 ```
 
-Or use Console:
+Result:
 
 ```text
-Google Cloud Console -> Firestore -> Create database -> Native mode
+OK: Firestore database kisanai connected. Collection count visible to credentials: 0
 ```
 
-## Disabled API Failures
+Local `.env` value:
 
-Affected services:
+```env
+FIRESTORE_DATABASE=kisanai
+```
+
+## Passed: Google Service APIs
+
+The following APIs are enabled and their smoke tests passed:
 
 - Speech-to-Text
 - Text-to-Speech
 - Translation
 - Dialogflow CX
-- Earth Engine
+- Maps Geocoding
 
-Fix:
+Commands:
 
 ```bash
-gcloud services enable \
-  speech.googleapis.com \
-  texttospeech.googleapis.com \
-  translate.googleapis.com \
-  dialogflow.googleapis.com \
-  earthengine.googleapis.com \
-  --project kisanai-501120
+.venv-google/bin/python smoke_tests/test_speech_to_text.py
+.venv-google/bin/python smoke_tests/test_text_to_speech.py
+.venv-google/bin/python smoke_tests/test_translation.py
+.venv-google/bin/python smoke_tests/test_dialogflow.py
+.venv-google/bin/python smoke_tests/test_maps_geocoding.py
 ```
-
-Wait a few minutes and rerun the corresponding smoke tests.
 
 ## Old Common Failure: ADC Missing
 
@@ -149,12 +148,27 @@ export GOOGLE_APPLICATION_CREDENTIALS=/secure/local/path/kisan-ai-backend.json
 
 Do not commit the JSON file.
 
-## Earth Engine Failure
+## Passed: Earth Engine
+
+Command:
+
+```bash
+.venv-google/bin/python smoke_tests/test_earth_engine.py
+```
+
+Result:
+
+```text
+OK: Earth Engine initialized. Demo buffer area: 776015 sq m
+```
+
+## Old Earth Engine Failure
 
 Observed error:
 
 ```text
-Please authorize access to your Earth Engine account by running earthengine authenticate
+Project kisanai-501120 is not registered to use Earth Engine.
+Visit https://console.cloud.google.com/earth-engine/configuration?project=kisanai-501120
 ```
 
 Fix:
@@ -165,33 +179,77 @@ Fix:
 .venv-google/bin/python smoke_tests/test_earth_engine.py
 ```
 
-If project access is not approved in Earth Engine yet, complete Earth Engine signup/project registration first.
-
-## Maps Geocoding Failure
-
-Observed error:
+If the same registration error remains, complete project registration at:
 
 ```text
-RuntimeError: MAPS_API_KEY missing. Add it to local .env, not .env.example.
+Google Cloud Console -> Earth Engine -> Configuration
 ```
 
-Fix:
+Earth Engine is enabled as an API, but it has a separate project registration/access step.
+
+## Passed: Authkey
+
+Balance command:
+
+```bash
+.venv-google/bin/python smoke_tests/test_authkey_balance.py
+```
+
+Channel scenario command:
+
+```bash
+.venv-google/bin/python smoke_tests/test_authkey_channels.py
+```
+
+Result:
+
+```text
+OK: Authkey balance API responded
+OK: Authkey dry-run build scenarios covered: send_sms, send_voice, send_parallel_sms_voice, send_voice_with_sms_fallback, send_whatsapp_template_get, send_whatsapp_template_json, send_whatsapp_media_template_get, send_whatsapp_bulk_template_json
+```
+
+`AUTHKEY_SEND_ENABLED=false` is the default to prevent accidental SMS, WhatsApp, or voice calls.
+
+## Passed: Maps Geocoding
+
+Local `.env` must include:
 
 ```env
 MAPS_API_KEY=your-local-maps-key
 ```
 
-Then:
+Result:
+
+```text
+OK: Google Maps Geocoding responded
+```
+
+## Current Verification Commands
+
+Run:
 
 ```bash
+.venv-google/bin/python smoke_tests/test_gemini.py
+.venv-google/bin/python smoke_tests/test_firestore.py
+.venv-google/bin/python smoke_tests/test_storage.py
+.venv-google/bin/python smoke_tests/test_bigquery.py
+.venv-google/bin/python smoke_tests/test_pubsub.py
+.venv-google/bin/python smoke_tests/test_speech_to_text.py
+.venv-google/bin/python smoke_tests/test_text_to_speech.py
+.venv-google/bin/python smoke_tests/test_translation.py
+.venv-google/bin/python smoke_tests/test_secret_manager.py
+.venv-google/bin/python smoke_tests/test_dialogflow.py
+.venv-google/bin/python smoke_tests/test_earth_engine.py
 .venv-google/bin/python smoke_tests/test_maps_geocoding.py
+.venv-google/bin/python smoke_tests/test_authkey_balance.py
+.venv-google/bin/python smoke_tests/test_authkey_channels.py
 ```
 
 ## Required Before Next Development Step
 
 1. Install Google Cloud CLI locally.
 2. Run `gcloud auth application-default login`.
-3. Create/confirm Firestore database.
+3. Create/confirm Firestore database `kisanai`.
 4. Create/confirm bucket `kisanai-501120-kisan-ai-media`.
 5. Create Pub/Sub topic `kisan-alerts`.
 6. Add local `.env` values:
@@ -200,6 +258,7 @@ Then:
 GOOGLE_CLOUD_PROJECT=kisanai-501120
 GOOGLE_CLOUD_LOCATION=global
 GCP_REGION=asia-south1
+FIRESTORE_DATABASE=kisanai
 GEMINI_API_KEY=your-rotated-local-key
 GEMINI_MODEL=gemini-2.5-flash
 STORAGE_BUCKET=kisanai-501120-kisan-ai-media

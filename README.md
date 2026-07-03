@@ -11,7 +11,7 @@ This is a standalone FastAPI prototype for the competition track. It intentional
 5. Create a Rythu Seva Kendra follow-up ticket.
 6. Support WhatsApp Business, voice-call and SMS style intake for low-connectivity farmers.
 
-The code runs locally without Google credentials. Google Cloud services and communication providers are isolated behind adapters so the team can replace demo logic with real integrations quickly.
+The code is organized so Google Cloud, government data, and communication providers stay behind service adapters. Local tests avoid live network calls, while runtime integrations should use configured real providers.
 
 ## Stack
 
@@ -35,7 +35,7 @@ app/
   api/v1/endpoints/      HTTP endpoints by feature
   core/                  settings and app configuration
   models/                request/response schemas and crop domain data
-  repositories/          persistence boundary; in-memory for demo
+  repositories/          persistence boundary; Firestore implementation is the next backend slice
   services/              business logic and external integration adapters
   utils/                 language helpers
 tests/                   FastAPI flow tests
@@ -160,29 +160,30 @@ curl -X POST http://127.0.0.1:8080/api/v1/calls/webhook \
 Use the existing service classes as stable boundaries:
 
 - `GeminiService`: switch `diagnose_crop_health` and language response generation to Gemini or Vertex AI.
-- `EarthEngineService`: replace demo NDVI payload with Earth Engine polygon/time-series fetch.
+- `EarthEngineService`: fetch Sentinel/Landsat farm signals through Earth Engine.
 - `VoiceService`: replace simulated transcript/audio with Cloud Speech-to-Text and Text-to-Speech.
 - `SmsService`: plug Twilio, Gupshup, or a basic SMS gateway webhook.
 - `WhatsAppService`: plug WhatsApp Business Cloud API webhook verification, templates and media fetch.
 - `CallService`: plug Exotel, Twilio Voice, Knowlarity or another IVR/call provider callback.
 - `WeatherService`: plug IMD/Open-Meteo/Google weather partner feed and ground sensor ingestion.
-- `GovernmentDataService`: plug data.gov.in, IMD, India-WRIS, Soil Health Card and Agmarknet ingestion.
+- `GovernmentDataService`: plug data.gov.in, IMD, India-WRIS and Soil Health Card ingestion.
 - `CropStageAdvisoryService`: add crop-stage rules and Gemini synthesis for sowing through harvest.
 - `SoilCardVisionService`: replace text-parser fallback with Gemini/Vertex AI Vision soil-card extraction.
-- `ConversationStore`: replace in-memory storage with Firestore/Cloud SQL and BigQuery export.
+- `ConversationStore`: replace local repository storage with Firestore and BigQuery export.
 - `AlertPriorityPolicy`: central policy for WhatsApp/SMS/voice-call escalation.
 
-For the competition, this structure gives a working demo now and a clear route to use Google Cloud technologies in the final build.
+For the competition, this structure keeps each feature independently owned while the backend moves from verified service connectivity to production-style integrations.
 
 ## Provider Onboarding Docs
 
 - [Google setup verification](docs/setup/GOOGLE_SETUP_VERIFICATION.md)
 - [Google smoke test results](docs/setup/GOOGLE_SMOKE_TEST_RESULTS.md)
 - [Service fallback plan](docs/setup/SERVICE_FALLBACKS.md)
+- [Backend development sequence](docs/DEVELOPMENT_SEQUENCE.md)
+- [Public data ingestion plan](docs/data/PUBLIC_DATA_INGESTION.md)
 - [Channel provider roadmap](docs/providers/README.md)
 - [Authkey SMS and WhatsApp](docs/providers/AUTHKEY_SMS_AND_WHATSAPP.md)
 - [WhatsApp Business Cloud API](docs/providers/WHATSAPP_BUSINESS_CLOUD_API.md)
-- [Vomyra Voice AI](docs/providers/VOMYRA_VOICE_AI.md)
 - [Google Dialogflow](docs/providers/GOOGLE_DIALOGFLOW.md)
 
 ## IP Boundary

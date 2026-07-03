@@ -6,6 +6,7 @@ from google.cloud import firestore
 
 
 project = optional_env("GOOGLE_CLOUD_PROJECT")
-client = firestore.Client(project=project)
+database = optional_env("FIRESTORE_DATABASE", "(default)")
+client = firestore.Client(project=project, database=database)
 collections = list(client.collections())
-print_ok(f"Firestore connected. Collection count visible to credentials: {len(collections)}")
+print_ok(f"Firestore database {database} connected. Collection count visible to credentials: {len(collections)}")
