@@ -126,6 +126,7 @@ The React Native app supports phone/language onboarding, WhatsApp-like chat, tex
 | `POST /api/v1/sms/webhook` | SMS-style farmer intake. |
 | `POST /api/v1/whatsapp/webhook` | WhatsApp-style text/location/media/voice intake. |
 | `POST /api/v1/calls/webhook` | Voice-call/IVR style intake. |
+| `POST /api/v1/{whatsapp,sms,calls}/receipt` | Store provider delivery receipt/status callback with normalized retry state. |
 | `POST /api/v1/dialogflow/webhook` | Dialogflow CX fulfillment webhook for structured multi-turn flows. |
 | `GET /api/v1/data/sources` | List useful government/public data sources. |
 | `POST /api/v1/data/context` | Query BigQuery public-data context for rainfall, groundwater, soil, crop history and agromet. |

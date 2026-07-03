@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Any
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
@@ -314,6 +315,8 @@ class AlertDeliveryRequest(BaseModel):
     message: str = Field(min_length=1, max_length=1000)
     alert_plan: AlertPlan
     language: str | None = None
+    media_url: str | None = None
+    media_file_name: str | None = None
 
 
 class ChannelDeliveryResult(BaseModel):
@@ -323,6 +326,11 @@ class ChannelDeliveryResult(BaseModel):
     status: str
     sent: bool = False
     dry_run: bool = False
+    provider_message_id: str | None = None
+    attempt_count: int = 1
+    retryable: bool = False
+    raw_status: str | None = None
+    metadata: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
     error: str | None = None
 
 
@@ -332,6 +340,37 @@ class AlertDeliveryResponse(BaseModel):
     message: str
     results: list[ChannelDeliveryResult]
     overall_status: str
+
+
+class ChannelReceiptRequest(BaseModel):
+    provider: str = "authkey"
+    channel: str
+    provider_message_id: str | None = None
+    message_id: str | None = None
+    phone: str | None = None
+    status: str
+    event_type: str = "delivery_receipt"
+    raw_payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class ChannelDeliveryReceipt(BaseModel):
+    id: str = Field(default_factory=lambda: f"receipt_{uuid4().hex[:10]}")
+    provider: str
+    channel: str
+    provider_message_id: str | None = None
+    message_id: str | None = None
+    phone: str | None = None
+    status: str
+    normalized_status: str
+    event_type: str
+    retryable: bool = False
+    raw_payload: dict[str, Any] = Field(default_factory=dict)
+    received_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class ChannelReceiptResponse(BaseModel):
+    saved: bool
+    receipt: ChannelDeliveryReceipt
 
 
 class ProactiveAlertRunRequest(BaseModel):

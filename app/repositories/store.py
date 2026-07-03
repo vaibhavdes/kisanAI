@@ -4,6 +4,7 @@ from typing import Protocol
 
 from app.core.config import settings
 from app.models.schemas import (
+    ChannelDeliveryReceipt,
     ConversationMessage,
     ExpertTicket,
     FarmProfile,
@@ -41,6 +42,10 @@ class AppStore(Protocol):
 
     def list_conversation_messages(self, farmer_id: str, limit: int = 20) -> list[ConversationMessage]: ...
 
+    def save_delivery_receipt(self, receipt: ChannelDeliveryReceipt) -> ChannelDeliveryReceipt: ...
+
+    def list_delivery_receipts(self, limit: int = 100) -> list[ChannelDeliveryReceipt]: ...
+
     def list_provider_routes(self) -> list[ProviderRoute]: ...
 
     def get_provider_route(self, feature: ProviderFeature) -> ProviderRoute: ...
@@ -56,6 +61,7 @@ class LocalStore:
         self.farmer_ids_by_phone: dict[str, str] = {}
         self.tickets: list[ExpertTicket] = []
         self.conversations: list[ConversationMessage] = []
+        self.delivery_receipts: list[ChannelDeliveryReceipt] = []
         self.provider_routes: dict[ProviderFeature, ProviderRoute] = default_provider_routes()
         self.provider_routes_updated_at = datetime.now(UTC)
 
@@ -120,6 +126,13 @@ class LocalStore:
         messages = [message for message in self.conversations if message.farmer_id == farmer_id]
         return messages[-limit:]
 
+    def save_delivery_receipt(self, receipt: ChannelDeliveryReceipt) -> ChannelDeliveryReceipt:
+        self.delivery_receipts.append(receipt)
+        return receipt
+
+    def list_delivery_receipts(self, limit: int = 100) -> list[ChannelDeliveryReceipt]:
+        return self.delivery_receipts[-limit:]
+
     def list_provider_routes(self) -> list[ProviderRoute]:
         return list(self.provider_routes.values())
 
@@ -136,6 +149,7 @@ class LocalStore:
         self.farmer_ids_by_phone.clear()
         self.tickets.clear()
         self.conversations.clear()
+        self.delivery_receipts.clear()
         self.provider_routes = default_provider_routes()
         self.provider_routes_updated_at = datetime.now(UTC)
 
@@ -271,6 +285,19 @@ class FirestoreStore:
             .stream()
         )
         return list(reversed([ConversationMessage(**doc.to_dict()) for doc in docs]))
+
+    def save_delivery_receipt(self, receipt: ChannelDeliveryReceipt) -> ChannelDeliveryReceipt:
+        self.client.collection("channel_delivery_receipts").document(receipt.id).set(receipt.model_dump(mode="json"))
+        return receipt
+
+    def list_delivery_receipts(self, limit: int = 100) -> list[ChannelDeliveryReceipt]:
+        docs = (
+            self.client.collection("channel_delivery_receipts")
+            .order_by("received_at", direction="DESCENDING")
+            .limit(limit)
+            .stream()
+        )
+        return list(reversed([ChannelDeliveryReceipt(**doc.to_dict()) for doc in docs]))
 
     def list_provider_routes(self) -> list[ProviderRoute]:
         docs = self.client.collection("provider_routes").stream()

@@ -323,6 +323,69 @@ def test_alert_delivery_uses_configured_channels_in_dry_run(monkeypatch) -> None
     assert all(item["status"] == "dry_run" for item in body["results"])
 
 
+def test_alert_delivery_uses_whatsapp_media_template_when_media_url_exists(monkeypatch) -> None:
+    farmer_id = create_demo_farmer()
+    monkeypatch.setattr(settings, "authkey_api_key", "secret-key")
+    monkeypatch.setattr(settings, "authkey_whatsapp_template_id", "template-1")
+    monkeypatch.setattr(settings, "authkey_whatsapp_media_template_id", "media-template-1")
+    monkeypatch.setattr(settings, "authkey_send_enabled", False)
+
+    response = client.post(
+        "/api/v1/alerts/deliver",
+        json={
+            "farmer_id": farmer_id,
+            "message": "Satellite stress map is ready.",
+            "media_url": "https://storage.googleapis.com/demo/stress-map.png",
+            "media_file_name": "stress-map.png",
+            "alert_plan": {
+                "priority": "high",
+                "channels": ["whatsapp"],
+                "reason": "Satellite water stress.",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    result = response.json()["results"][0]
+    assert result["status"] == "dry_run"
+    assert result["operation"] == "send_whatsapp_media_template_get"
+    assert result["metadata"]["method"] == "GET"
+
+
+def test_channel_delivery_receipts_are_normalized_and_saved() -> None:
+    response = client.post(
+        "/api/v1/whatsapp/receipt",
+        json={
+            "provider": "authkey",
+            "channel": "whatsapp",
+            "provider_message_id": "wa-123",
+            "phone": "+91 99999 00000",
+            "status": "undelivered",
+            "raw_payload": {"reason": "template rejected"},
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["saved"] is True
+    assert body["receipt"]["channel"] == "whatsapp"
+    assert body["receipt"]["normalized_status"] == "failed"
+    assert body["receipt"]["retryable"] is True
+
+    sms_response = client.post(
+        "/api/v1/sms/receipt",
+        json={
+            "provider": "authkey",
+            "channel": "sms",
+            "provider_message_id": "sms-123",
+            "status": "delivered",
+        },
+    )
+    assert sms_response.status_code == 200
+    assert sms_response.json()["receipt"]["normalized_status"] == "delivered"
+    assert sms_response.json()["receipt"]["retryable"] is False
+
+
 def test_daily_alert_runner_generates_and_delivers_high_risk_alert(monkeypatch) -> None:
     farmer_id = create_demo_farmer()
     monkeypatch.setattr(settings, "authkey_api_key", "secret-key")
