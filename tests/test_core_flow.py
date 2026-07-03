@@ -269,6 +269,68 @@ def test_alert_delivery_uses_configured_channels_in_dry_run(monkeypatch) -> None
     assert all(item["status"] == "dry_run" for item in body["results"])
 
 
+def test_daily_alert_runner_generates_and_delivers_high_risk_alert(monkeypatch) -> None:
+    farmer_id = create_demo_farmer()
+    monkeypatch.setattr(settings, "authkey_api_key", "secret-key")
+    monkeypatch.setattr(settings, "authkey_sms_sender", "KISAN")
+    monkeypatch.setattr(settings, "authkey_whatsapp_template_id", "template-1")
+    monkeypatch.setattr(settings, "authkey_send_enabled", False)
+
+    response = client.post(
+        "/api/v1/alerts/run-daily",
+        json={
+            "farmer_ids": [farmer_id],
+            "crop": "maize",
+            "min_priority": "medium",
+            "rainfall_forecast_mm": [0, 0, 0, 0, 0, 0, 0],
+            "soil_moisture": 0.12,
+            "temperature_c": 38,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["processed"] == 1
+    assert body["generated"] == 1
+    assert body["delivered"] == 1
+    result = body["results"][0]
+    assert result["risk_level"] == "critical"
+    assert result["priority"] == "urgent"
+    assert result["delivery"]["overall_status"] == "dry_run"
+
+    recent = client.get(f"/api/v1/conversations/{farmer_id}")
+    assert recent.status_code == 200
+    assert recent.json()[-1]["intent"] == "daily_dry_spell_alert"
+
+
+def test_daily_alert_runner_skips_farmer_without_location_or_forecast() -> None:
+    farmer_response = client.post(
+        "/api/v1/farmers",
+        json={
+            "name": "Location Pending",
+            "phone": "8888888888",
+            "language": "hi-IN",
+            "village": "Unknown",
+            "district": "Unknown",
+            "state": "Unknown",
+            "farm": {"area_acres": 1, "soil_type": "unknown"},
+        },
+    )
+    assert farmer_response.status_code == 200
+
+    response = client.post(
+        "/api/v1/alerts/run-daily",
+        json={"farmer_ids": [farmer_response.json()["id"]], "crop": "cotton"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["processed"] == 1
+    assert body["generated"] == 0
+    assert body["skipped"] == 1
+    assert body["results"][0]["skipped_reason"] == "farm_location_required"
+
+
 def test_voice_transcribe_and_speak_use_configured_fallback(monkeypatch) -> None:
     calls: list[str] = []
 

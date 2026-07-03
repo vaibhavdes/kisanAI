@@ -277,6 +277,34 @@ class AlertDeliveryResponse(BaseModel):
     overall_status: str
 
 
+class ProactiveAlertRunRequest(BaseModel):
+    farmer_ids: list[str] | None = None
+    crop: str = "crop"
+    min_priority: AlertPriority = AlertPriority.medium
+    rainfall_forecast_mm: list[float] = Field(default_factory=list, max_length=10)
+    soil_moisture: float | None = Field(default=None, ge=0, le=1)
+    temperature_c: float | None = None
+    max_farmers: int = Field(default=100, ge=1, le=500)
+
+
+class ProactiveAlertFarmerResult(BaseModel):
+    farmer_id: str
+    generated: bool
+    skipped_reason: str | None = None
+    risk_level: RiskLevel | None = None
+    priority: AlertPriority | None = None
+    advisory: str | None = None
+    delivery: AlertDeliveryResponse | None = None
+
+
+class ProactiveAlertRunResponse(BaseModel):
+    processed: int
+    generated: int
+    skipped: int
+    delivered: int
+    results: list[ProactiveAlertFarmerResult]
+
+
 class CropStageAdvisoryRequest(BaseModel):
     farmer_id: str
     crop: str

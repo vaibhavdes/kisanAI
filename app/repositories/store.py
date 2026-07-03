@@ -27,6 +27,8 @@ class AppStore(Protocol):
 
     def get_farmer(self, farmer_id: str) -> FarmerResponse | None: ...
 
+    def list_farmers(self, limit: int = 100) -> list[FarmerResponse]: ...
+
     def save_ticket(self, ticket: ExpertTicket) -> ExpertTicket: ...
 
     def list_tickets(self, farmer_id: str) -> list[ExpertTicket]: ...
@@ -86,6 +88,9 @@ class LocalStore:
 
     def get_farmer(self, farmer_id: str) -> FarmerResponse | None:
         return self.farmers.get(farmer_id)
+
+    def list_farmers(self, limit: int = 100) -> list[FarmerResponse]:
+        return list(self.farmers.values())[:limit]
 
     def save_ticket(self, ticket: ExpertTicket) -> ExpertTicket:
         self.tickets.append(ticket)
@@ -204,6 +209,10 @@ class FirestoreStore:
     def get_farmer(self, farmer_id: str) -> FarmerResponse | None:
         doc = self.client.collection("farmers").document(farmer_id).get()
         return FarmerResponse(**doc.to_dict()) if doc.exists else None
+
+    def list_farmers(self, limit: int = 100) -> list[FarmerResponse]:
+        docs = self.client.collection("farmers").limit(limit).stream()
+        return [FarmerResponse(**doc.to_dict()) for doc in docs]
 
     def save_ticket(self, ticket: ExpertTicket) -> ExpertTicket:
         self.client.collection("expert_tickets").document(ticket.id).set(ticket.model_dump(mode="json"))
