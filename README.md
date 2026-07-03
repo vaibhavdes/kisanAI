@@ -67,7 +67,7 @@ cd kisan-alert-hackathon
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
-uvicorn app.main:app --reload --port 8080
+DATA_STORE_PROVIDER=local ENABLE_GOOGLE_INTEGRATIONS=false uvicorn app.main:app --reload --port 8080
 ```
 
 Open:
@@ -280,6 +280,7 @@ For the competition, this structure keeps each feature independently owned while
 - [Service fallback plan](docs/setup/SERVICE_FALLBACKS.md)
 - [Backend development sequence](docs/DEVELOPMENT_SEQUENCE.md)
 - [Public data ingestion plan](docs/data/PUBLIC_DATA_INGESTION.md)
+- [Cloud Run deployment guide](docs/deployment/CLOUD_RUN_DEPLOYMENT.md)
 - [Channel provider roadmap](docs/providers/README.md)
 - [Authkey SMS and WhatsApp](docs/providers/AUTHKEY_SMS_AND_WHATSAPP.md)
 - [WhatsApp Business Cloud API](docs/providers/WHATSAPP_BUSINESS_CLOUD_API.md)
