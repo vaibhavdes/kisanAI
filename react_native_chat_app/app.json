@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "Kisan Alert",
+    "slug": "kisan-alert-chat",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "kisanalert",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Kisan Alert uses your farm location for localized weather and advisory context."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Kisan Alert uses crop photos for AI crop-health diagnosis.",
+          "cameraPermission": "Kisan Alert uses camera photos for AI crop-health diagnosis."
+        }
+      ]
+    ]
+  }
+}

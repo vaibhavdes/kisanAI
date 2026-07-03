@@ -38,7 +38,7 @@ app/
   repositories/          Firestore-backed runtime store plus isolated local test store
   services/              business logic and external integration adapters
   utils/                 language helpers
-flutter_chat_app/         Flutter WhatsApp-like farmer chat prototype
+react_native_chat_app/    Expo React Native farmer chat prototype
 scripts/                  Utility scripts such as BigQuery CSV ingestion
 tests/                   FastAPI flow tests
 ```
@@ -47,7 +47,7 @@ tests/                   FastAPI flow tests
 
 ```mermaid
 flowchart LR
-  Farmer["Farmer\nWhatsApp / SMS / Voice / Flutter"] --> Channels["Channel adapters"]
+  Farmer["Farmer\nWhatsApp / SMS / Voice / React Native"] --> Channels["Channel adapters"]
   Channels --> Dialogflow["Dialogflow CX\noptional slot filling"]
   Channels --> Backend["FastAPI backend"]
   Dialogflow --> Backend
@@ -76,27 +76,31 @@ Open:
 - Admin service switch UI: http://127.0.0.1:8080/admin
 - Health: http://127.0.0.1:8080/health
 
-## Run Flutter Chat App
+## Run React Native Chat App
 
-Install Flutter SDK first. Then start the backend and run:
-
-brew install --cask flutter
-flutter --version
-flutter doctor
+Install Node.js dependencies, start the backend, then run the Expo app:
 
 ```bash
-cd flutter_chat_app
-flutter pub get
-flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8080
+cd react_native_chat_app
+npm install
+npm run android
 ```
 
-For Chrome/web testing:
+The default Android emulator API URL is `http://10.0.2.2:8080`.
+
+For web testing:
 
 ```bash
-flutter run -d chrome --dart-define=API_BASE_URL=http://127.0.0.1:8080
+EXPO_PUBLIC_API_URL=http://127.0.0.1:8080 npm run web
 ```
 
-The Flutter app currently supports phone/language onboarding, WhatsApp-like chat, text messages, location demo payload, crop-photo demo payload and voice-note demo payload through `/api/v1/whatsapp/webhook`.
+For a physical Android device, use your machine LAN IP:
+
+```bash
+EXPO_PUBLIC_API_URL=http://192.168.1.20:8080 npm start
+```
+
+The React Native app supports phone/language onboarding, WhatsApp-like chat, text messages, current location sharing, crop photo capture/selection and voice-note transcript payloads through `/api/v1/whatsapp/webhook`.
 
 ## API Functionality
 
