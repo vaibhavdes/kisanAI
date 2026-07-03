@@ -4,6 +4,7 @@ from app.models.schemas import (
     CropRecommendationResponse,
     CropScore,
     FarmerResponse,
+    GovernmentDataContextResponse,
 )
 
 
@@ -13,8 +14,30 @@ class RecommendationEngine:
         farmer: FarmerResponse,
         payload: CropRecommendationRequest,
         ndvi: float | None,
+        public_context: GovernmentDataContextResponse | None = None,
+        satellite_source: str | None = None,
+        satellite_note: str | None = None,
+        public_context_error: str | None = None,
     ) -> CropRecommendationResponse:
-        scores = [self._score_crop(crop, farmer, payload, ndvi) for crop in CROP_PROFILES]
+        rainfall_mm = self._rainfall_mm(payload, public_context)
+        if rainfall_mm is None:
+            raise ValueError("expected_rainfall_mm is required when district rainfall normal is unavailable.")
+
+        soil_ph = self._soil_ph(farmer, public_context)
+        groundwater_depth_m = self._groundwater_depth_m(farmer, public_context)
+
+        scores = [
+            self._score_crop(
+                crop=crop,
+                farmer=farmer,
+                payload=payload,
+                ndvi=ndvi,
+                rainfall_mm=rainfall_mm,
+                soil_ph=soil_ph,
+                groundwater_depth_m=groundwater_depth_m,
+            )
+            for crop in CROP_PROFILES
+        ]
         top_scores = sorted(scores, key=lambda item: item.score, reverse=True)[:3]
 
         return CropRecommendationResponse(
@@ -22,11 +45,19 @@ class RecommendationEngine:
             language=farmer.language,
             recommendations=top_scores,
             data_sources={
-                "soil": "farmer_profile",
-                "rainfall": payload.expected_rainfall_mm,
-                "groundwaterDepthM": farmer.farm.groundwater_depth_m,
+                "soil": self._soil_source(farmer, public_context),
+                "soilPh": soil_ph,
+                "rainfall": rainfall_mm,
+                "rainfallSource": "request" if payload.expected_rainfall_mm is not None else self._signal_source(public_context, "rainfall_normal"),
+                "groundwaterDepthM": groundwater_depth_m,
+                "groundwaterSource": "farmer_profile"
+                if farmer.farm.groundwater_depth_m is not None
+                else self._signal_source(public_context, "groundwater"),
                 "ndvi": ndvi,
-                "satellite": "earth_engine_or_request_context" if ndvi is not None else None,
+                "satellite": satellite_source or ("request" if payload.ndvi is not None else None),
+                "satelliteNote": satellite_note,
+                "publicContextMissing": ",".join(public_context.missing_sources) if public_context else None,
+                "publicContextError": public_context_error,
             },
         )
 
@@ -36,6 +67,9 @@ class RecommendationEngine:
         farmer: FarmerResponse,
         payload: CropRecommendationRequest,
         ndvi: float | None,
+        rainfall_mm: float,
+        soil_ph: float | None,
+        groundwater_depth_m: float | None,
     ) -> CropScore:
         score = 30
         reasons: list[str] = []
@@ -57,18 +91,18 @@ class RecommendationEngine:
             soil_fit = "weak"
             reasons.append("Soil type is less suitable.")
 
-        if farmer.farm.soil_ph is not None:
-            if crop.ph_min <= farmer.farm.soil_ph <= crop.ph_max:
+        if soil_ph is not None:
+            if crop.ph_min <= soil_ph <= crop.ph_max:
                 score += 10
                 reasons.append("Soil pH is in safe range.")
             else:
                 score -= 8
                 reasons.append("Soil pH needs correction before this crop.")
 
-        if crop.rainfall_min_mm <= payload.expected_rainfall_mm <= crop.rainfall_max_mm:
+        if crop.rainfall_min_mm <= rainfall_mm <= crop.rainfall_max_mm:
             score += 15
             reasons.append("Expected rainfall matches crop need.")
-        elif payload.expected_rainfall_mm < crop.rainfall_min_mm:
+        elif rainfall_mm < crop.rainfall_min_mm:
             score -= 12
             reasons.append("Rainfall may be insufficient.")
         else:
@@ -85,7 +119,7 @@ class RecommendationEngine:
             water_fit = "risky"
             reasons.append("Water availability is below crop requirement.")
 
-        if farmer.farm.groundwater_depth_m is not None and farmer.farm.groundwater_depth_m > 30:
+        if groundwater_depth_m is not None and groundwater_depth_m > 30:
             if crop.water_need == "high":
                 score -= 15
                 reasons.append("Deep groundwater makes high-water crop risky.")
@@ -110,3 +144,56 @@ class RecommendationEngine:
             reasons=reasons[:4],
             next_action=f"{crop.notes} Verify soil, water availability, and local agronomy advice before sowing.",
         )
+
+    def _rainfall_mm(
+        self,
+        payload: CropRecommendationRequest,
+        public_context: GovernmentDataContextResponse | None,
+    ) -> float | None:
+        if payload.expected_rainfall_mm is not None:
+            return payload.expected_rainfall_mm
+        if public_context and public_context.rainfall_normal.available:
+            return self._float(public_context.rainfall_normal.value)
+        return None
+
+    def _soil_ph(
+        self,
+        farmer: FarmerResponse,
+        public_context: GovernmentDataContextResponse | None,
+    ) -> float | None:
+        if farmer.farm.soil_ph is not None:
+            return farmer.farm.soil_ph
+        if public_context and public_context.soil_health.available:
+            return self._float(public_context.soil_health.metadata.get("ph"))
+        return None
+
+    def _groundwater_depth_m(
+        self,
+        farmer: FarmerResponse,
+        public_context: GovernmentDataContextResponse | None,
+    ) -> float | None:
+        if farmer.farm.groundwater_depth_m is not None:
+            return farmer.farm.groundwater_depth_m
+        if public_context and public_context.groundwater.available:
+            return self._float(public_context.groundwater.value)
+        return None
+
+    def _soil_source(
+        self,
+        farmer: FarmerResponse,
+        public_context: GovernmentDataContextResponse | None,
+    ) -> str | None:
+        if farmer.farm.soil_type != "unknown" or farmer.farm.soil_ph is not None:
+            return "farmer_profile"
+        return self._signal_source(public_context, "soil_health")
+
+    def _signal_source(self, public_context: GovernmentDataContextResponse | None, signal_name: str) -> str | None:
+        if not public_context:
+            return None
+        signal = getattr(public_context, signal_name)
+        return signal.source if signal.available else None
+
+    def _float(self, value: str | float | int | None) -> float | None:
+        if value is None:
+            return None
+        return float(value)

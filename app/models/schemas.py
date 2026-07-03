@@ -139,7 +139,8 @@ class FarmerIdentifyResponse(BaseModel):
 class CropRecommendationRequest(BaseModel):
     farmer_id: str
     season: str = "kharif"
-    expected_rainfall_mm: float = Field(ge=0)
+    expected_rainfall_mm: float | None = Field(default=None, ge=0)
+    month: int | None = Field(default=None, ge=1, le=12)
     ndvi: float | None = Field(default=None, ge=-1, le=1)
     water_availability: WaterAvailability = WaterAvailability.medium
 
@@ -157,7 +158,7 @@ class CropRecommendationResponse(BaseModel):
     farmer_id: str
     language: str
     recommendations: list[CropScore]
-    data_sources: dict[str, str | float | None]
+    data_sources: dict[str, str | float | int | bool | None]
 
 
 class DrySpellAdvisoryRequest(BaseModel):
@@ -404,6 +405,7 @@ class DataSignal(BaseModel):
     value: str | float | int | None = None
     unit: str | None = None
     note: str | None = None
+    metadata: dict[str, str | float | int | None] = Field(default_factory=dict)
 
 
 class GovernmentDataContextResponse(BaseModel):

@@ -413,6 +413,78 @@ def test_bigquery_public_context_maps_available_signals() -> None:
     assert context.crop_history.value == 2400.0
     assert context.agromet_advisory.available is True
     assert context.missing_sources == []
+    assert context.rainfall_normal.metadata["month"] == 7
+    assert context.soil_health.metadata["ph"] == 6.8
+
+
+def test_crop_recommendation_uses_public_context_when_rainfall_is_missing(monkeypatch) -> None:
+    farmer_response = client.post(
+        "/api/v1/farmers",
+        json={
+            "name": "Ravi",
+            "phone": "9999999998",
+            "language": "te-IN",
+            "village": "Demo Village",
+            "district": "Guntur",
+            "state": "Andhra Pradesh",
+            "farm": {
+                "area_acres": 2.5,
+                "soil_type": "black",
+            },
+        },
+    )
+    assert farmer_response.status_code == 200
+
+    def fake_context(self, payload):
+        return GovernmentDataContextResponse(
+            state=payload.state,
+            district=payload.district,
+            crop=payload.crop,
+            rainfall_normal=DataSignal(
+                available=True,
+                source="district_rainfall_normals",
+                value=640.0,
+                unit="mm",
+                metadata={"month": payload.month},
+            ),
+            groundwater=DataSignal(
+                available=True,
+                source="district_groundwater_level",
+                value=18.0,
+                unit="m",
+                metadata={"groundwater_depth_m": 18.0},
+            ),
+            soil_health=DataSignal(
+                available=True,
+                source="soil_health_summary",
+                value="pH 6.8",
+                metadata={"ph": 6.8},
+            ),
+            crop_history=DataSignal(available=False, source="crop_production_history"),
+            agromet_advisory=DataSignal(available=False, source="agromet_advisory"),
+            recommended_datasets=[],
+            missing_sources=["crop_history", "agromet_advisory"],
+        )
+
+    monkeypatch.setattr("app.services.bigquery_public_data_service.BigQueryPublicDataService.build_context", fake_context)
+
+    response = client.post(
+        "/api/v1/recommendations/crop",
+        json={
+            "farmer_id": farmer_response.json()["id"],
+            "season": "kharif",
+            "month": 7,
+            "ndvi": 0.4,
+            "water_availability": "medium",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["recommendations"]) == 3
+    assert body["data_sources"]["rainfall"] == 640.0
+    assert body["data_sources"]["rainfallSource"] == "district_rainfall_normals"
+    assert body["data_sources"]["groundwaterDepthM"] == 18.0
 
 
 def test_provider_config_can_be_switched_by_feature() -> None:

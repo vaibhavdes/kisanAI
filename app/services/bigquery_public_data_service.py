@@ -64,6 +64,7 @@ class BigQueryPublicDataService:
             value=self._float(row.get("normal_rainfall_mm")),
             unit="mm",
             note="Historical district monthly rainfall normal.",
+            metadata={"month": payload.month},
         )
 
     def _groundwater(self, payload: GovernmentDataContextRequest) -> DataSignal:
@@ -88,6 +89,10 @@ class BigQueryPublicDataService:
             value=self._float(row.get("groundwater_depth_m")),
             unit="m",
             note=f"Latest groundwater depth. Category: {category}" if category else "Latest groundwater depth.",
+            metadata={
+                "groundwater_depth_m": self._float(row.get("groundwater_depth_m")),
+                "category": str(category) if category else None,
+            },
         )
 
     def _soil_health(self, payload: GovernmentDataContextRequest) -> DataSignal:
@@ -114,6 +119,13 @@ class BigQueryPublicDataService:
             source=str(row.get("source_name") or "soil_health_summary"),
             value=summary,
             note="District soil-health baseline.",
+            metadata={
+                "ph": self._float(row.get("ph")),
+                "organic_carbon": self._float(row.get("organic_carbon")),
+                "nitrogen": str(row.get("nitrogen")) if row.get("nitrogen") is not None else None,
+                "phosphorus": str(row.get("phosphorus")) if row.get("phosphorus") is not None else None,
+                "potassium": str(row.get("potassium")) if row.get("potassium") is not None else None,
+            },
         )
 
     def _crop_history(self, payload: GovernmentDataContextRequest) -> DataSignal:
@@ -141,6 +153,7 @@ class BigQueryPublicDataService:
             value=self._float(row.get("yield_kg_per_hectare")),
             unit="kg/ha",
             note=f"Latest available yield history year: {row.get('crop_year')}.",
+            metadata={"crop_year": self._int(row.get("crop_year"))},
         )
 
     def _agromet(self, payload: GovernmentDataContextRequest) -> DataSignal:
@@ -194,3 +207,6 @@ class BigQueryPublicDataService:
 
     def _float(self, value: Any) -> float | None:
         return float(value) if value is not None else None
+
+    def _int(self, value: Any) -> int | None:
+        return int(value) if value is not None else None
