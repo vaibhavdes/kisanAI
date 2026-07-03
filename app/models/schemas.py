@@ -98,6 +98,11 @@ class FarmProfile(BaseModel):
     soil_type: str = "unknown"
     soil_ph: float | None = Field(default=None, ge=0, le=14)
     groundwater_depth_m: float | None = Field(default=None, ge=0)
+    soil_ec: float | None = Field(default=None, ge=0)
+    organic_carbon: float | None = Field(default=None, ge=0)
+    soil_nitrogen: str | float | None = None
+    soil_phosphorus: str | float | None = None
+    soil_potassium: str | float | None = None
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)
 
@@ -389,6 +394,8 @@ class SoilCardExtractionResponse(BaseModel):
     confidence: float = Field(ge=0, le=1)
     needs_manual_review: bool
     raw_text: str | None = None
+    persisted: bool = False
+    farmer: FarmerResponse | None = None
 
 
 class VoiceIntakeRequest(BaseModel):

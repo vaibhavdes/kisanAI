@@ -865,6 +865,68 @@ def test_soil_card_image_extraction_uses_vision(monkeypatch) -> None:
     assert body["micronutrients"]["zinc"] == "low"
 
 
+def test_soil_card_extraction_persists_to_farmer_profile() -> None:
+    response = client.post(
+        "/api/v1/farmers",
+        json={
+            "name": "Lakshmi",
+            "phone": "9888888888",
+            "language": "te-IN",
+            "village": "Demo Village",
+            "district": "Guntur",
+            "state": "Andhra Pradesh",
+            "farm": {
+                "area_acres": 1.5,
+                "soil_type": "unknown",
+                "groundwater_depth_m": 20,
+                "latitude": 16.3,
+                "longitude": 80.4,
+            },
+        },
+    )
+    assert response.status_code == 200
+    farmer_id = response.json()["id"]
+
+    extraction_response = client.post(
+        "/api/v1/soil-cards/extract",
+        json={
+            "farmer_id": farmer_id,
+            "extracted_text": (
+                "Black soil pH 6.4 EC 0.2 organic carbon 0.55 "
+                "nitrogen medium phosphorus low potassium high"
+            ),
+        },
+    )
+
+    assert extraction_response.status_code == 200
+    body = extraction_response.json()
+    assert body["persisted"] is True
+    assert body["farmer"]["farm"]["soil_type"] == "black"
+    assert body["farmer"]["farm"]["soil_ph"] == 6.4
+    assert body["farmer"]["farm"]["soil_nitrogen"] == "medium"
+    assert body["farmer"]["farm"]["soil_phosphorus"] == "low"
+    assert body["farmer"]["farm"]["soil_potassium"] == "high"
+
+    saved = store.get_farmer(farmer_id)
+    assert saved is not None
+    assert saved.farm.soil_type == "black"
+    assert saved.farm.soil_ph == 6.4
+
+    recommendation_response = client.post(
+        "/api/v1/recommendations/crop",
+        json={
+            "farmer_id": farmer_id,
+            "season": "kharif",
+            "expected_rainfall_mm": 620,
+            "water_availability": "medium",
+        },
+    )
+    assert recommendation_response.status_code == 200
+    data_sources = recommendation_response.json()["data_sources"]
+    assert data_sources["soil"] == "farmer_profile"
+    assert data_sources["soilPh"] == 6.4
+
+
 def test_bigquery_public_context_maps_available_signals() -> None:
     class Row(dict):
         def items(self):

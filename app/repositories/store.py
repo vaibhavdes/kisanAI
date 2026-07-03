@@ -27,6 +27,8 @@ class AppStore(Protocol):
 
     def get_farmer(self, farmer_id: str) -> FarmerResponse | None: ...
 
+    def save_farmer(self, farmer: FarmerResponse) -> FarmerResponse: ...
+
     def list_farmers(self, limit: int = 100) -> list[FarmerResponse]: ...
 
     def save_ticket(self, ticket: ExpertTicket) -> ExpertTicket: ...
@@ -88,6 +90,11 @@ class LocalStore:
 
     def get_farmer(self, farmer_id: str) -> FarmerResponse | None:
         return self.farmers.get(farmer_id)
+
+    def save_farmer(self, farmer: FarmerResponse) -> FarmerResponse:
+        self.farmers[farmer.id] = farmer
+        self.farmer_ids_by_phone[normalize_phone(farmer.phone)] = farmer.id
+        return farmer
 
     def list_farmers(self, limit: int = 100) -> list[FarmerResponse]:
         return list(self.farmers.values())[:limit]
@@ -209,6 +216,19 @@ class FirestoreStore:
     def get_farmer(self, farmer_id: str) -> FarmerResponse | None:
         doc = self.client.collection("farmers").document(farmer_id).get()
         return FarmerResponse(**doc.to_dict()) if doc.exists else None
+
+    def save_farmer(self, farmer: FarmerResponse) -> FarmerResponse:
+        normalized_phone = normalize_phone(farmer.phone)
+        self.client.collection("farmers").document(farmer.id).set(farmer.model_dump(mode="json"), merge=True)
+        self.client.collection("farmer_channel_identities").document(normalized_phone).set(
+            {
+                "farmer_id": farmer.id,
+                "phone": normalized_phone,
+                "updated_at": datetime.now(UTC).isoformat(),
+            },
+            merge=True,
+        )
+        return farmer
 
     def list_farmers(self, limit: int = 100) -> list[FarmerResponse]:
         docs = self.client.collection("farmers").limit(limit).stream()

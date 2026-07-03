@@ -118,7 +118,7 @@ The React Native app supports phone/language onboarding, WhatsApp-like chat, tex
 | `POST /api/v1/alerts/run-daily` | Run proactive daily alert generation and delivery for selected/all farmers. |
 | `POST /api/v1/alerts/deliver` | Deliver an alert plan through WhatsApp, SMS and/or voice call. |
 | `POST /api/v1/diagnosis/log` | Log crop symptoms/photo metadata and create expert ticket. |
-| `POST /api/v1/soil-cards/extract` | Extract soil card values with vision provider pipeline. |
+| `POST /api/v1/soil-cards/extract` | Extract soil card values with vision provider pipeline and persist to farmer profile when `farmer_id` is supplied. |
 | `POST /api/v1/voice/transcribe` | Convert voice audio payload to text. |
 | `POST /api/v1/voice/speak` | Convert text reply to voice audio. |
 | `POST /api/v1/translate/text` | Translate text through configured translation route. |
