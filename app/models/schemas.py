@@ -395,16 +395,28 @@ class GovernmentDataContextRequest(BaseModel):
     district: str
     crop: str | None = None
     season: str | None = None
+    month: int | None = Field(default=None, ge=1, le=12)
+
+
+class DataSignal(BaseModel):
+    available: bool
+    source: str
+    value: str | float | int | None = None
+    unit: str | None = None
+    note: str | None = None
 
 
 class GovernmentDataContextResponse(BaseModel):
     state: str
     district: str
     crop: str | None = None
-    rainfall_signal: str
-    groundwater_signal: str
-    crop_history_signal: str
+    rainfall_normal: DataSignal
+    groundwater: DataSignal
+    soil_health: DataSignal
+    crop_history: DataSignal
+    agromet_advisory: DataSignal
     recommended_datasets: list[DatasetReference]
+    missing_sources: list[str] = Field(default_factory=list)
 
 
 class ConversationRole(StrEnum):

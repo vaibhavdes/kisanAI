@@ -30,6 +30,7 @@ Current project status:
 - Bucket provisioned: `gs://kisanai-501120-kisan-ai-public-data`
 - BigQuery datasets provisioned in `asia-south1`: `kisan_ai_raw`, `kisan_ai_curated`, `kisan_ai_ops`
 - Curated tables provisioned from `infra/bigquery/public_data_schema.sql`
+- Backend context service queries the curated tables and reports missing sources until official data rows are ingested.
 
 ## Storage Layout
 

@@ -5,8 +5,9 @@ os.environ["DATA_STORE_PROVIDER"] = "local"
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.models.schemas import WeatherContextRequest
+from app.models.schemas import DataSignal, GovernmentDataContextRequest, GovernmentDataContextResponse, WeatherContextRequest
 from app.repositories.store import store
+from app.services.bigquery_public_data_service import BigQueryPublicDataService
 from app.services.weather_context_service import WeatherContextService
 
 client = TestClient(app)
@@ -264,19 +265,61 @@ def test_dry_spell_fetches_weather_when_forecast_missing(monkeypatch) -> None:
     assert body["risk_level"] in {"high", "critical"}
 
 
-def test_extension_interfaces_for_data_soil_and_conversation() -> None:
+def test_extension_interfaces_for_data_soil_and_conversation(monkeypatch) -> None:
     farmer_id = create_demo_farmer()
 
     sources_response = client.get("/api/v1/data/sources")
     assert sources_response.status_code == 200
     assert any("IMD" in f'{item["name"]} {item["provider"]}' for item in sources_response.json())
 
+    def fake_context(self, payload):
+        return GovernmentDataContextResponse(
+            state=payload.state,
+            district=payload.district,
+            crop=payload.crop,
+            rainfall_normal=DataSignal(
+                available=False,
+                source="district_rainfall_normals",
+                note="No rainfall normal found for district/month.",
+            ),
+            groundwater=DataSignal(
+                available=False,
+                source="district_groundwater_level",
+                note="No groundwater level found for district.",
+            ),
+            soil_health=DataSignal(
+                available=False,
+                source="soil_health_summary",
+                note="No soil-health baseline found for district.",
+            ),
+            crop_history=DataSignal(
+                available=False,
+                source="crop_production_history",
+                note="No crop production/yield history found.",
+            ),
+            agromet_advisory=DataSignal(
+                available=False,
+                source="agromet_advisory",
+                note="No IMD agromet advisory found for district/crop.",
+            ),
+            recommended_datasets=[],
+            missing_sources=[
+                "rainfall_normal",
+                "groundwater",
+                "soil_health",
+                "crop_history",
+                "agromet_advisory",
+            ],
+        )
+
+    monkeypatch.setattr("app.services.bigquery_public_data_service.BigQueryPublicDataService.build_context", fake_context)
     context_response = client.post(
         "/api/v1/data/context",
         json={"state": "Andhra Pradesh", "district": "Guntur", "crop": "chilli", "season": "kharif"},
     )
     assert context_response.status_code == 200
-    assert context_response.json()["recommended_datasets"]
+    assert context_response.json()["missing_sources"]
+    assert "missing_sources" in context_response.json()
 
     soil_response = client.post(
         "/api/v1/soil-cards/extract",
@@ -305,6 +348,71 @@ def test_extension_interfaces_for_data_soil_and_conversation() -> None:
     recent_response = client.get(f"/api/v1/conversations/{farmer_id}")
     assert recent_response.status_code == 200
     assert len(recent_response.json()) == 1
+
+
+def test_bigquery_public_context_maps_available_signals() -> None:
+    class Row(dict):
+        def items(self):
+            return super().items()
+
+    class QueryResult:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def result(self):
+            return self.rows
+
+    class Client:
+        def query(self, query, job_config=None):
+            if "district_rainfall_normals" in query:
+                return QueryResult([Row(normal_rainfall_mm=640.5, source_name="IMD rainfall normals")])
+            if "district_groundwater_level" in query:
+                return QueryResult(
+                    [Row(groundwater_depth_m=18.2, category="safe", source_name="Groundwater Board")]
+                )
+            if "soil_health_summary" in query:
+                return QueryResult(
+                    [
+                        Row(
+                            ph=6.8,
+                            organic_carbon=0.55,
+                            nitrogen="medium",
+                            phosphorus="medium",
+                            potassium="high",
+                            source_name="Soil Health Card",
+                        )
+                    ]
+                )
+            if "crop_production_history" in query:
+                return QueryResult([Row(yield_kg_per_hectare=2400, crop_year=2024, source_name="UPAg")])
+            if "agromet_advisory" in query:
+                return QueryResult(
+                    [
+                        Row(
+                            advisory_text="Avoid spraying before heavy rain.",
+                            bulletin_date="2026-07-03",
+                            source_name="IMD Agromet",
+                        )
+                    ]
+                )
+            return QueryResult([])
+
+    context = BigQueryPublicDataService(client=Client()).build_context(
+        GovernmentDataContextRequest(
+            state="Andhra Pradesh",
+            district="Guntur",
+            crop="chilli",
+            season="kharif",
+            month=7,
+        )
+    )
+
+    assert context.rainfall_normal.available is True
+    assert context.groundwater.value == 18.2
+    assert context.soil_health.available is True
+    assert context.crop_history.value == 2400.0
+    assert context.agromet_advisory.available is True
+    assert context.missing_sources == []
 
 
 def test_provider_config_can_be_switched_by_feature() -> None:

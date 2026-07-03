@@ -194,7 +194,7 @@ Use the existing service classes as stable boundaries:
 - `WhatsAppService`: plug WhatsApp Business Cloud API webhook verification, templates and media fetch.
 - `CallService`: plug Exotel, Twilio Voice, Knowlarity or another IVR/call provider callback.
 - `WeatherService`: use configured weather provider route; IMD is primary when configured and Open-Meteo is the real free fallback.
-- `GovernmentDataService`: plug data.gov.in, IMD, India-WRIS and Soil Health Card ingestion.
+- `GovernmentDataService`: queries BigQuery curated public-data tables for rainfall, groundwater, soil health, crop history and agromet context.
 - `CropStageAdvisoryService`: add crop-stage rules and Gemini synthesis for sowing through harvest.
 - `SoilCardVisionService`: replace text-parser fallback with Gemini/Vertex AI Vision soil-card extraction.
 - `ConversationStore`: persist farmer conversation context in Firestore and export anonymized analytics to BigQuery.

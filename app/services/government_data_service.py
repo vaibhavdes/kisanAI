@@ -53,20 +53,6 @@ class GovernmentDataService:
         ]
 
     def build_context(self, payload: GovernmentDataContextRequest) -> GovernmentDataContextResponse:
-        crop_text = f" for {payload.crop}" if payload.crop else ""
-        season_text = f" during {payload.season}" if payload.season else ""
-        return GovernmentDataContextResponse(
-            state=payload.state,
-            district=payload.district,
-            crop=payload.crop,
-            rainfall_signal=(
-                f"Use IMD historical rainfall normals and 5-day forecast for {payload.district}{season_text}."
-            ),
-            groundwater_signal=(
-                f"Use India-WRIS/groundwater datasets to classify water stress in {payload.district}."
-            ),
-            crop_history_signal=(
-                f"Use APY/crop production datasets to compare historical yield{crop_text} in this region."
-            ),
-            recommended_datasets=self.list_sources(),
-        )
+        from app.services.bigquery_public_data_service import BigQueryPublicDataService
+
+        return BigQueryPublicDataService().build_context(payload)

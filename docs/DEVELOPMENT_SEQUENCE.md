@@ -70,6 +70,8 @@ Dry-spell advisories now fetch weather automatically when request rainfall is no
 
 ## 4. BigQuery Public Data
 
+Status: context service implemented; ingestion rows still need to be loaded.
+
 Provision raw/curated/ops datasets and load first official files:
 
 - Rainfall daily/history.
@@ -85,6 +87,12 @@ POST /api/v1/data/context
 ```
 
 using real BigQuery context instead of static text.
+
+Current behavior:
+
+- Queries curated BigQuery tables.
+- Returns `available=false` for missing public-data sources.
+- Does not fabricate rainfall, groundwater, soil, crop history, or agromet signals.
 
 ## 5. Crop Recommendation Engine
 

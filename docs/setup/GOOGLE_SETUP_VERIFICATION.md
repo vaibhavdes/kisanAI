@@ -113,6 +113,7 @@ python smoke_tests/test_speech_to_text.py
 python smoke_tests/test_text_to_speech.py
 python smoke_tests/test_translation.py
 python smoke_tests/test_bigquery.py
+python smoke_tests/test_bigquery_public_context.py
 python smoke_tests/test_pubsub.py
 python smoke_tests/test_secret_manager.py
 python smoke_tests/test_dialogflow.py

@@ -15,6 +15,7 @@ Project used for checks: `kisanai-501120`
 | Firestore | Passed | Named database `kisanai` connected |
 | Cloud Storage | Passed | Bucket `kisanai-501120-kisan-ai-media` exists |
 | BigQuery | Passed | BigQuery connected; no datasets yet |
+| BigQuery Public Context | Passed | Curated public-data tables query successfully; no rows ingested yet |
 | Pub/Sub | Passed | Topic `projects/kisanai-501120/topics/kisan-alerts` exists |
 | Speech-to-Text | Passed | API responded with demo silent audio |
 | Text-to-Speech | Passed | API generated demo audio bytes |
@@ -234,6 +235,7 @@ Run:
 .venv-google/bin/python smoke_tests/test_firestore.py
 .venv-google/bin/python smoke_tests/test_storage.py
 .venv-google/bin/python smoke_tests/test_bigquery.py
+.venv-google/bin/python smoke_tests/test_bigquery_public_context.py
 .venv-google/bin/python smoke_tests/test_pubsub.py
 .venv-google/bin/python smoke_tests/test_speech_to_text.py
 .venv-google/bin/python smoke_tests/test_text_to_speech.py
