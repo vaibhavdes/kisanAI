@@ -15,6 +15,7 @@ GCP_REGION=asia-south1
 FIRESTORE_DATABASE=kisanai
 GEMINI_API_KEY=replace-with-rotated-local-key
 GEMINI_MODEL=gemini-2.5-flash
+VERTEX_AI_MODEL=gemini-2.5-flash
 STORAGE_BUCKET=kisanai-501120-kisan-ai-media
 PUBSUB_ALERT_TOPIC=kisan-alerts
 MAPS_API_KEY=replace-local-only

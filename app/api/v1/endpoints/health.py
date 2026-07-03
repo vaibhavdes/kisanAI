@@ -17,7 +17,8 @@ def health_check() -> dict:
         "services": {
             "api": True,
             "database": True,
-            "gemini": google_ready and bool(settings.gemini_api_key),
+            "vertexAi": google_ready,
+            "gemini": bool(settings.gemini_api_key),
             "earthEngine": google_ready,
             "speechToText": google_ready,
             "textToSpeech": google_ready,

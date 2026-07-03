@@ -1,4 +1,6 @@
+from app.core.config import settings
 from app.models.schemas import (
+    AdvisoryTestRequest,
     DrySpellAdvisoryRequest,
     DrySpellAdvisoryResponse,
     FarmerResponse,
@@ -6,6 +8,7 @@ from app.models.schemas import (
     WeatherContextRequest,
 )
 from app.services.alert_priority_policy import AlertPriorityPolicy
+from app.services.gemini_service import AdvisoryProviderUnavailable, GeminiService
 from app.services.weather_context_service import WeatherContextService
 from app.utils.language import phrase
 
@@ -64,6 +67,30 @@ class WeatherService:
             if risk in {RiskLevel.high, RiskLevel.critical}
             else "Fertilizer application can continue if soil is moist."
         )
+        ai_source = None
+        ai_model = None
+        if settings.enable_google_integrations:
+            try:
+                ai_response = GeminiService().generate_test_advisory(
+                    AdvisoryTestRequest(
+                        farmer_name=farmer.name,
+                        language=farmer.language,
+                        crop=payload.crop,
+                        crop_stage="dry-spell irrigation advisory",
+                        location=f"{farmer.village}, {farmer.district}, {farmer.state}",
+                        weather_summary=(
+                            f"{dry_days} dry days in 7-day forecast. "
+                            f"Risk {risk.value}. Temperature {temperature_c} C."
+                        ),
+                        rainfall_forecast_mm=sum(rainfall_forecast[:7]),
+                        soil_moisture=moisture,
+                    )
+                )
+                advisory = ai_response.advisory_text
+                ai_source = ai_response.source
+                ai_model = ai_response.model
+            except AdvisoryProviderUnavailable:
+                pass
 
         alert_plan = AlertPriorityPolicy().build_plan(
             risk,
@@ -81,4 +108,6 @@ class WeatherService:
             alert_channels=alert_plan.channels,
             weather_source=weather_source,
             weather_fallback_used=weather_fallback_used,
+            ai_source=ai_source,
+            ai_model=ai_model,
         )

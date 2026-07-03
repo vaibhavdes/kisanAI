@@ -1,11 +1,19 @@
 import os
 
 os.environ["DATA_STORE_PROVIDER"] = "local"
+os.environ["ENABLE_GOOGLE_INTEGRATIONS"] = "false"
 
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.models.schemas import DataSignal, GovernmentDataContextRequest, GovernmentDataContextResponse, WeatherContextRequest
+from app.models.schemas import (
+    AdvisoryTestResponse,
+    DataSignal,
+    GovernmentDataContextRequest,
+    GovernmentDataContextResponse,
+    RiskLevel,
+    WeatherContextRequest,
+)
 from app.repositories.store import store
 from app.services.bigquery_public_data_service import BigQueryPublicDataService
 from app.services.weather_context_service import WeatherContextService
@@ -417,6 +425,104 @@ def test_bigquery_public_context_maps_available_signals() -> None:
     assert context.soil_health.metadata["ph"] == 6.8
 
 
+def test_advisory_generation_prefers_vertex_and_falls_back_to_gemini(monkeypatch) -> None:
+    calls: list[str] = []
+
+    def vertex_failure(self, payload):
+        calls.append("vertex")
+        raise RuntimeError("temporary vertex failure")
+
+    def gemini_success(self, payload):
+        calls.append("gemini")
+        return AdvisoryTestResponse(
+            source="gemini",
+            model="gemini-2.5-flash",
+            advisory_text="Keep drainage open before heavy rain.",
+            risk_level=RiskLevel.high,
+            recommended_actions=["Avoid spraying before rain."],
+        )
+
+    monkeypatch.setattr(
+        "app.services.gemini_service.GeminiService._generate_advisory_with_vertex",
+        vertex_failure,
+    )
+    monkeypatch.setattr(
+        "app.services.gemini_service.GeminiService._generate_advisory_with_gemini",
+        gemini_success,
+    )
+
+    response = client.post(
+        "/api/v1/advisory/test",
+        json={
+            "farmer_name": "Ravi",
+            "language": "te-IN",
+            "crop": "cotton",
+            "crop_stage": "vegetative",
+            "location": "Guntur",
+            "weather_summary": "Heavy rain likely.",
+            "rainfall_forecast_mm": 50,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["source"] == "gemini"
+    assert calls == ["vertex", "gemini"]
+
+
+def test_farmer_advisories_include_ai_source_when_google_enabled(monkeypatch) -> None:
+    farmer_id = create_demo_farmer()
+
+    def ai_success(self, payload):
+        return AdvisoryTestResponse(
+            source="vertex_ai",
+            model="gemini-2.5-flash",
+            advisory_text=f"AI advice for {payload.crop}: irrigate carefully.",
+            risk_level=RiskLevel.medium,
+            recommended_actions=["Irrigate in the evening.", "Check soil moisture first."],
+        )
+
+    monkeypatch.setattr(
+        "app.services.weather_service.settings.enable_google_integrations",
+        True,
+    )
+    monkeypatch.setattr(
+        "app.services.crop_stage_advisory_service.settings.enable_google_integrations",
+        True,
+    )
+    monkeypatch.setattr(
+        "app.services.gemini_service.GeminiService.generate_test_advisory",
+        ai_success,
+    )
+
+    dry_spell_response = client.post(
+        "/api/v1/advisories/dry-spell",
+        json={
+            "farmer_id": farmer_id,
+            "crop": "maize",
+            "soil_moisture": 0.16,
+            "rainfall_forecast_mm": [0, 0, 0, 0, 0, 1, 0],
+        },
+    )
+    assert dry_spell_response.status_code == 200
+    assert dry_spell_response.json()["ai_source"] == "vertex_ai"
+    assert dry_spell_response.json()["advisory"].startswith("AI advice")
+
+    stage_response = client.post(
+        "/api/v1/advisories/crop-stage",
+        json={
+            "farmer_id": farmer_id,
+            "crop": "maize",
+            "stage": "flowering",
+            "rainfall_forecast_mm": [0, 0, 0, 0, 1, 0, 2],
+            "humidity_percent": 88,
+            "soil_moisture": 0.19,
+        },
+    )
+    assert stage_response.status_code == 200
+    assert stage_response.json()["ai_source"] == "vertex_ai"
+    assert stage_response.json()["actions"] == ["Irrigate in the evening.", "Check soil moisture first."]
+
+
 def test_crop_recommendation_uses_public_context_when_rainfall_is_missing(monkeypatch) -> None:
     farmer_response = client.post(
         "/api/v1/farmers",
@@ -493,6 +599,8 @@ def test_provider_config_can_be_switched_by_feature() -> None:
     routes = {item["feature"]: item for item in config_response.json()["routes"]}
     assert routes["weather"]["primary"] == "imd"
     assert routes["weather"]["secondary"] == "open_meteo"
+    assert routes["llm_advisory"]["primary"] == "vertex_ai"
+    assert routes["llm_advisory"]["secondary"] == "gemini"
     assert routes["satellite"]["primary"] == "earth_engine"
     assert routes["satellite"]["allow_fallback"] is False
 

@@ -181,6 +181,8 @@ class DrySpellAdvisoryResponse(BaseModel):
     alert_channels: list[str]
     weather_source: str | None = None
     weather_fallback_used: bool = False
+    ai_source: str | None = None
+    ai_model: str | None = None
 
 
 class WeatherDailyForecast(BaseModel):
@@ -270,6 +272,8 @@ class CropStageAdvisoryResponse(BaseModel):
     actions: list[str]
     alert_plan: AlertPlan
     data_used: dict[str, float | str | None]
+    ai_source: str | None = None
+    ai_model: str | None = None
 
 
 class DiagnosisRequest(BaseModel):

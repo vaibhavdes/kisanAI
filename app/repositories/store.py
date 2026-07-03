@@ -291,7 +291,12 @@ def default_provider_routes() -> dict[ProviderFeature, ProviderRoute]:
             secondary=ProviderName.sarvam_translate,
             note="Prefer cheaper cached translation; use Gemini only inside advisory generation when needed.",
         ),
-        ProviderRoute(feature=ProviderFeature.llm_advisory, primary=ProviderName.gemini, secondary=ProviderName.vertex_ai),
+        ProviderRoute(
+            feature=ProviderFeature.llm_advisory,
+            primary=ProviderName.vertex_ai,
+            secondary=ProviderName.gemini,
+            note="Prefer Vertex AI Gemini for hackathon credits; Gemini API remains fallback.",
+        ),
         ProviderRoute(
             feature=ProviderFeature.vision_ocr,
             primary=ProviderName.gemini_vision,

@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     open_meteo_base_url: str = "https://api.open-meteo.com/v1/forecast"
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-2.5-flash"
+    vertex_ai_model: str = "gemini-2.5-flash"
     storage_bucket: str | None = None
     pubsub_alert_topic: str = "kisan-alerts"
     sms_provider_api_key: str | None = None

@@ -7,18 +7,30 @@ from app.models.schemas import (
     DiagnosisRequest,
     DiagnosisResult,
     FarmerResponse,
+    ProviderFeature,
+    ProviderName,
     RiskLevel,
 )
+from app.repositories.store import store
+
+
+class AdvisoryProviderUnavailable(RuntimeError):
+    pass
 
 
 class GeminiService:
     def generate_test_advisory(self, payload: AdvisoryTestRequest) -> AdvisoryTestResponse:
-        if settings.gemini_api_key:
+        errors: list[str] = []
+        for provider in self._provider_order():
             try:
-                return self._generate_advisory_with_gemini(payload)
+                if provider == ProviderName.vertex_ai:
+                    return self._generate_advisory_with_vertex(payload)
+                if provider == ProviderName.gemini:
+                    return self._generate_advisory_with_gemini(payload)
             except Exception as exc:
-                return self._fallback_advisory(payload, source=f"fallback_after_gemini_error:{exc.__class__.__name__}")
-        return self._fallback_advisory(payload, source="fallback_no_gemini_key")
+                errors.append(f"{provider.value}:{exc.__class__.__name__}:{exc}")
+        message = "; ".join(errors) if errors else "No LLM advisory provider is configured."
+        raise AdvisoryProviderUnavailable(message)
 
     def diagnose_crop_health(
         self,
@@ -26,16 +38,50 @@ class GeminiService:
         payload: DiagnosisRequest,
     ) -> DiagnosisResult:
         if settings.enable_google_integrations and settings.gemini_api_key:
-            # Production path: call Gemini multimodal or Vertex AI Vision with photo_uri and symptoms.
+            # Production path: call Gemini or Vertex Vision with photo_uri and symptoms.
             # Keep response shape identical to this fallback.
             return self._fallback_diagnosis(payload)
 
         return self._fallback_diagnosis(payload)
 
+    def _generate_advisory_with_vertex(self, payload: AdvisoryTestRequest) -> AdvisoryTestResponse:
+        from google import genai
+
+        if not settings.google_cloud_project:
+            raise AdvisoryProviderUnavailable("GOOGLE_CLOUD_PROJECT is required for Vertex AI.")
+        client = genai.Client(
+            vertexai=True,
+            project=settings.google_cloud_project,
+            location=settings.google_cloud_location,
+        )
+        return self._generate_with_client(
+            client=client,
+            model=settings.vertex_ai_model,
+            payload=payload,
+            source=ProviderName.vertex_ai.value,
+        )
+
     def _generate_advisory_with_gemini(self, payload: AdvisoryTestRequest) -> AdvisoryTestResponse:
         from google import genai
 
+        if not settings.gemini_api_key:
+            raise AdvisoryProviderUnavailable("GEMINI_API_KEY is required for Gemini API fallback.")
         client = genai.Client(api_key=settings.gemini_api_key)
+        return self._generate_with_client(
+            client=client,
+            model=settings.gemini_model,
+            payload=payload,
+            source=ProviderName.gemini.value,
+        )
+
+    def _generate_with_client(
+        self,
+        *,
+        client,
+        model: str,
+        payload: AdvisoryTestRequest,
+        source: str,
+    ) -> AdvisoryTestResponse:
         prompt = f"""
 You are KISAN-AI, an agricultural advisory assistant.
 
@@ -53,18 +99,20 @@ Soil moisture: {payload.soil_moisture}
 
 Keep advisory farmer-friendly, short, and actionable.
 """
-        response = client.models.generate_content(model=settings.gemini_model, contents=prompt)
+        response = client.models.generate_content(model=model, contents=prompt)
         text = (response.text or "").strip()
+        if not text:
+            raise AdvisoryProviderUnavailable(f"{source} returned an empty advisory response.")
         data = self._parse_json_response(text)
+        actions = data.get("recommended_actions", [])
+        if not isinstance(actions, list):
+            actions = []
         return AdvisoryTestResponse(
-            source="gemini",
-            model=settings.gemini_model,
+            source=source,
+            model=model,
             advisory_text=str(data.get("advisory_text") or text),
             risk_level=self._risk_from_text(str(data.get("risk_level") or "medium")),
-            recommended_actions=[
-                str(item) for item in data.get("recommended_actions", []) if str(item).strip()
-            ][:5]
-            or ["Avoid spraying before heavy rain.", "Check drainage and avoid waterlogging."],
+            recommended_actions=[str(item) for item in actions if str(item).strip()][:5],
         )
 
     def _parse_json_response(self, text: str) -> dict:
@@ -84,27 +132,6 @@ Keep advisory farmer-friendly, short, and actionable.
         if "low" in normalized:
             return RiskLevel.low
         return RiskLevel.medium
-
-    def _fallback_advisory(
-        self,
-        payload: AdvisoryTestRequest,
-        *,
-        source: str,
-    ) -> AdvisoryTestResponse:
-        return AdvisoryTestResponse(
-            source=source,
-            model=settings.gemini_model,
-            advisory_text=(
-                f"{payload.crop} farmer advisory: heavy rain is expected. Avoid spraying now, "
-                "clear drainage channels, and inspect the field after rain stops."
-            ),
-            risk_level=RiskLevel.high if payload.rainfall_forecast_mm >= 40 else RiskLevel.medium,
-            recommended_actions=[
-                "Avoid pesticide or fertilizer spray before rain.",
-                "Clear drainage to prevent waterlogging.",
-                "Check crop lodging and disease symptoms after rainfall.",
-            ],
-        )
 
     def _fallback_diagnosis(self, payload: DiagnosisRequest) -> DiagnosisResult:
         text = " ".join(
@@ -142,3 +169,13 @@ Keep advisory farmer-friendly, short, and actionable.
             immediate_action=action,
             needs_expert_followup=True,
         )
+
+    def _provider_order(self) -> list[ProviderName]:
+        route = store.get_provider_route(ProviderFeature.llm_advisory)
+        if not route.enabled:
+            return []
+
+        providers = [route.primary]
+        if route.allow_fallback and route.secondary:
+            providers.append(route.secondary)
+        return providers

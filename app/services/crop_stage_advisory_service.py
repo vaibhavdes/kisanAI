@@ -1,4 +1,6 @@
+from app.core.config import settings
 from app.models.schemas import (
+    AdvisoryTestRequest,
     CropStage,
     CropStageAdvisoryRequest,
     CropStageAdvisoryResponse,
@@ -6,6 +8,7 @@ from app.models.schemas import (
     RiskLevel,
 )
 from app.services.alert_priority_policy import AlertPriorityPolicy
+from app.services.gemini_service import AdvisoryProviderUnavailable, GeminiService
 
 
 class CropStageAdvisoryService:
@@ -18,6 +21,32 @@ class CropStageAdvisoryService:
         risk = self._risk_for_stage(payload, dry_days)
         actions = self._actions_for_stage(payload, dry_days, risk)
         advice = f"{payload.crop} is in {payload.stage.value} stage. " + " ".join(actions[:2])
+        ai_source = None
+        ai_model = None
+        if settings.enable_google_integrations:
+            try:
+                ai_response = GeminiService().generate_test_advisory(
+                    AdvisoryTestRequest(
+                        farmer_name=farmer.name,
+                        language=farmer.language,
+                        crop=payload.crop,
+                        crop_stage=payload.stage.value,
+                        location=f"{farmer.village}, {farmer.district}, {farmer.state}",
+                        weather_summary=(
+                            f"{dry_days} dry days forecast. Wind {payload.wind_speed_kmph} kmph. "
+                            f"Humidity {payload.humidity_percent}%. Risk {risk.value}."
+                        ),
+                        rainfall_forecast_mm=sum(payload.rainfall_forecast_mm[:7]),
+                        soil_moisture=payload.soil_moisture,
+                    )
+                )
+                advice = ai_response.advisory_text
+                if ai_response.recommended_actions:
+                    actions = ai_response.recommended_actions
+                ai_source = ai_response.source
+                ai_model = ai_response.model
+            except AdvisoryProviderUnavailable:
+                pass
         alert_plan = AlertPriorityPolicy().build_plan(
             risk,
             reason=f"{payload.stage.value} stage advisory risk is {risk.value}.",
@@ -38,6 +67,8 @@ class CropStageAdvisoryService:
                 "soilMoisture": payload.soil_moisture,
                 "diseaseRisk": payload.disease_risk.value if payload.disease_risk else None,
             },
+            ai_source=ai_source,
+            ai_model=ai_model,
         )
 
     def _risk_for_stage(self, payload: CropStageAdvisoryRequest, dry_days: int) -> RiskLevel:
@@ -96,4 +127,3 @@ class CropStageAdvisoryService:
         if risk in {RiskLevel.high, RiskLevel.critical}:
             actions.append("Escalate to expert if symptoms are visible.")
         return actions
-
