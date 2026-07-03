@@ -332,6 +332,79 @@ def test_daily_alert_runner_skips_farmer_without_location_or_forecast() -> None:
     assert body["results"][0]["skipped_reason"] == "farm_location_required"
 
 
+def test_dialogflow_webhook_runs_irrigation_fulfillment() -> None:
+    response = client.post(
+        "/api/v1/dialogflow/webhook",
+        json={
+            "languageCode": "en-IN",
+            "fulfillmentInfo": {"tag": "irrigation_advisory"},
+            "sessionInfo": {
+                "parameters": {
+                    "phone": "9999999999",
+                    "name": "Ravi",
+                    "state": "Andhra Pradesh",
+                    "district": "Guntur",
+                    "village": "Demo Village",
+                    "crop": "maize",
+                    "rainfall_forecast_mm": [0, 0, 0, 0, 0, 0, 0],
+                    "soil_moisture": 0.13,
+                    "temperature_c": 37,
+                    "text": "Should I irrigate maize today?",
+                }
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["payload"]["intent"] == "irrigation_advisory"
+    assert body["sessionInfo"]["parameters"]["farmer_id"]
+    assert "fulfillmentResponse" in body
+    assert body["fulfillmentResponse"]["messages"][0]["text"]["text"][0]
+
+
+def test_dialogflow_webhook_runs_crop_recommendation_fulfillment() -> None:
+    farmer_id = create_demo_farmer()
+    farmer = store.get_farmer(farmer_id)
+    assert farmer is not None
+
+    response = client.post(
+        "/api/v1/dialogflow/webhook",
+        json={
+            "languageCode": "en-IN",
+            "intentInfo": {"displayName": "crop_recommendation"},
+            "sessionInfo": {
+                "parameters": {
+                    "phone": farmer.phone,
+                    "season": "kharif",
+                    "expected_rainfall_mm": 620,
+                    "water_availability": "medium",
+                }
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["payload"]["intent"] == "crop_recommendation"
+    assert "Recommended crops:" in body["fulfillmentResponse"]["messages"][0]["text"]["text"][0]
+
+
+def test_dialogflow_webhook_detects_intent_from_text_when_tag_missing() -> None:
+    response = client.post(
+        "/api/v1/dialogflow/webhook",
+        json={
+            "languageCode": "en-IN",
+            "sessionInfo": {"parameters": {"text": "my cotton leaf has spots"}},
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["payload"]["intent"] == "crop_diagnosis"
+    assert body["payload"]["should_escalate"] is True
+
+
 def test_voice_transcribe_and_speak_use_configured_fallback(monkeypatch) -> None:
     calls: list[str] = []
 

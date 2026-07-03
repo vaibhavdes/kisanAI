@@ -8,6 +8,7 @@ from app.api.v1.endpoints import (
     conversations,
     data,
     diagnosis,
+    dialogflow,
     expert,
     farmers,
     health,
@@ -33,6 +34,7 @@ api_router.include_router(diagnosis.router, prefix="/api/v1/diagnosis", tags=["d
 api_router.include_router(data.router, prefix="/api/v1/data", tags=["government-data"])
 api_router.include_router(soil_cards.router, prefix="/api/v1/soil-cards", tags=["soil-cards"])
 api_router.include_router(conversations.router, prefix="/api/v1/conversations", tags=["conversations"])
+api_router.include_router(dialogflow.router, prefix="/api/v1/dialogflow", tags=["dialogflow"])
 api_router.include_router(translate.router, prefix="/api/v1/translate", tags=["translate"])
 api_router.include_router(voice.router, prefix="/api/v1/voice", tags=["voice"])
 api_router.include_router(weather.router, prefix="/api/v1/weather", tags=["weather"])
