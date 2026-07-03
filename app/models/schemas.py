@@ -178,6 +178,49 @@ class DrySpellAdvisoryResponse(BaseModel):
     advisory: str
     fertilizer_note: str
     alert_channels: list[str]
+    weather_source: str | None = None
+    weather_fallback_used: bool = False
+
+
+class WeatherDailyForecast(BaseModel):
+    date: str
+    rainfall_mm: float | None = None
+    rainfall_probability_percent: float | None = None
+    temperature_max_c: float | None = None
+    temperature_min_c: float | None = None
+    wind_speed_max_kmph: float | None = None
+    evapotranspiration_mm: float | None = None
+
+
+class WeatherProviderStatus(BaseModel):
+    provider: ProviderName
+    attempted: bool
+    success: bool
+    error: str | None = None
+
+
+class WeatherContextRequest(BaseModel):
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    days: int = Field(default=7, ge=1, le=16)
+    include_hourly_soil: bool = True
+
+
+class WeatherContextResponse(BaseModel):
+    latitude: float
+    longitude: float
+    source: ProviderName
+    fallback_used: bool
+    provider_statuses: list[WeatherProviderStatus]
+    current_temperature_c: float | None = None
+    current_humidity_percent: float | None = None
+    current_wind_speed_kmph: float | None = None
+    current_precipitation_mm: float | None = None
+    current_weather_code: int | None = None
+    soil_moisture: float | None = None
+    soil_temperature_c: float | None = None
+    daily: list[WeatherDailyForecast]
+    fetched_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class AdvisoryTestRequest(BaseModel):

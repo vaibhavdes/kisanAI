@@ -5,7 +5,9 @@ os.environ["DATA_STORE_PROVIDER"] = "local"
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.models.schemas import WeatherContextRequest
 from app.repositories.store import store
+from app.services.weather_context_service import WeatherContextService
 
 client = TestClient(app)
 
@@ -158,6 +160,108 @@ def test_progressive_farmer_identity_reuses_phone_across_channels() -> None:
     assert second["farmer"]["id"] == first["farmer"]["id"]
     assert second["farmer"]["phone"] == "919999999999"
     assert "farm_location" not in second["missing_fields"]
+
+
+def test_weather_context_uses_open_meteo_fallback(monkeypatch) -> None:
+    class Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {
+                "current": {
+                    "temperature_2m": 31.5,
+                    "relative_humidity_2m": 72,
+                    "precipitation": 0,
+                    "weather_code": 1,
+                    "wind_speed_10m": 12,
+                },
+                "hourly": {
+                    "soil_temperature_0cm": [28.2],
+                    "soil_moisture_0_to_1cm": [0.21],
+                },
+                "daily": {
+                    "time": ["2026-07-03", "2026-07-04"],
+                    "precipitation_sum": [0.0, 7.2],
+                    "precipitation_probability_max": [10, 85],
+                    "temperature_2m_max": [33.0, 30.0],
+                    "temperature_2m_min": [24.0, 23.0],
+                    "wind_speed_10m_max": [18.0, 22.0],
+                    "et0_fao_evapotranspiration": [5.1, 3.8],
+                },
+            }
+
+    def fake_get(*args, **kwargs):
+        return Response()
+
+    monkeypatch.setattr("app.services.weather_context_service.requests.get", fake_get)
+    context = WeatherContextService().get_context(
+        WeatherContextRequest(latitude=18.5204, longitude=73.8567, days=2)
+    )
+
+    assert context.source == "open_meteo"
+    assert context.fallback_used is True
+    assert context.daily[1].rainfall_mm == 7.2
+    assert context.soil_moisture == 0.21
+
+
+def test_dry_spell_fetches_weather_when_forecast_missing(monkeypatch) -> None:
+    class Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {
+                "current": {
+                    "temperature_2m": 36.0,
+                    "relative_humidity_2m": 55,
+                    "precipitation": 0,
+                    "weather_code": 0,
+                    "wind_speed_10m": 14,
+                },
+                "hourly": {
+                    "soil_temperature_0cm": [31.0],
+                    "soil_moisture_0_to_1cm": [0.16],
+                },
+                "daily": {
+                    "time": [
+                        "2026-07-03",
+                        "2026-07-04",
+                        "2026-07-05",
+                        "2026-07-06",
+                        "2026-07-07",
+                        "2026-07-08",
+                        "2026-07-09",
+                    ],
+                    "precipitation_sum": [0, 0, 0, 0, 0, 1, 0],
+                    "precipitation_probability_max": [5, 5, 5, 10, 10, 20, 10],
+                    "temperature_2m_max": [36, 37, 37, 36, 35, 34, 34],
+                    "temperature_2m_min": [24, 24, 25, 25, 24, 24, 24],
+                    "wind_speed_10m_max": [16, 18, 18, 15, 14, 14, 15],
+                    "et0_fao_evapotranspiration": [6, 6, 6, 5.8, 5.7, 5.6, 5.5],
+                },
+            }
+
+    def fake_get(*args, **kwargs):
+        return Response()
+
+    monkeypatch.setattr("app.services.weather_context_service.requests.get", fake_get)
+    farmer_id = create_demo_farmer()
+    response = client.post(
+        "/api/v1/advisories/dry-spell",
+        json={
+            "farmer_id": farmer_id,
+            "crop": "maize",
+            "soil_moisture": 0.16,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["weather_source"] == "open_meteo"
+    assert body["weather_fallback_used"] is True
+    assert body["dry_days"] == 7
+    assert body["risk_level"] in {"high", "critical"}
 
 
 def test_extension_interfaces_for_data_soil_and_conversation() -> None:

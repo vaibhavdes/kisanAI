@@ -302,7 +302,7 @@ def default_provider_routes() -> dict[ProviderFeature, ProviderRoute]:
             primary=ProviderName.earth_engine,
             secondary=None,
             allow_fallback=False,
-            note="No manual NDVI fallback; original satellite data is required.",
+            note="No alternate satellite provider fallback; original Earth Engine satellite data is required.",
         ),
         ProviderRoute(
             feature=ProviderFeature.geocoding_maps,

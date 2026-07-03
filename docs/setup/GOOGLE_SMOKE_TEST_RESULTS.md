@@ -23,6 +23,7 @@ Project used for checks: `kisanai-501120`
 | Dialogflow CX | Passed | API connected; no agents created yet |
 | Earth Engine | Passed | Earth Engine initialized and computed demo geometry area |
 | Maps Geocoding | Passed | API key works for Geocoding API |
+| Open-Meteo Weather | Passed | Fallback weather provider returned live forecast context |
 | Authkey Balance | Passed | Authkey balance API responded |
 | Authkey Channels | Passed | SMS, voice, voice fallback, WhatsApp template/media/bulk scenarios build in dry-run |
 
@@ -241,6 +242,7 @@ Run:
 .venv-google/bin/python smoke_tests/test_dialogflow.py
 .venv-google/bin/python smoke_tests/test_earth_engine.py
 .venv-google/bin/python smoke_tests/test_maps_geocoding.py
+.venv-google/bin/python smoke_tests/test_open_meteo.py
 .venv-google/bin/python smoke_tests/test_authkey_balance.py
 .venv-google/bin/python smoke_tests/test_authkey_channels.py
 ```

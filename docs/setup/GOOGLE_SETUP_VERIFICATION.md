@@ -118,6 +118,7 @@ python smoke_tests/test_secret_manager.py
 python smoke_tests/test_dialogflow.py
 python smoke_tests/test_earth_engine.py
 python smoke_tests/test_maps_geocoding.py
+python smoke_tests/test_open_meteo.py
 python smoke_tests/test_authkey_balance.py
 python smoke_tests/test_authkey_channels.py
 ```

@@ -59,6 +59,7 @@ Open:
   - `/api/v1/sms/webhook`
   - `/api/v1/whatsapp/webhook`
   - `/api/v1/calls/webhook`
+  - `/api/v1/weather/context`
   - `/api/v1/advisories/crop-stage`
   - `/api/v1/soil-cards/extract`
   - `/api/v1/data/sources`
@@ -86,6 +87,20 @@ curl -X POST http://127.0.0.1:8080/api/v1/farmers \
       "latitude": 16.3,
       "longitude": 80.4
     }
+  }'
+```
+
+If `rainfall_forecast_mm` is omitted and the farmer profile has farm coordinates, the backend fetches weather context through the configured provider route: IMD primary when configured, Open-Meteo fallback otherwise.
+
+Fetch weather context directly:
+
+```bash
+curl -X POST http://127.0.0.1:8080/api/v1/weather/context \
+  -H "Content-Type: application/json" \
+  -d '{
+    "latitude": 18.5204,
+    "longitude": 73.8567,
+    "days": 7
   }'
 ```
 
@@ -126,7 +141,7 @@ curl -X POST http://127.0.0.1:8080/api/v1/diagnosis/log \
     "farmer_id": "replace-with-created-id",
     "crop": "chilli",
     "symptoms_text": "Leaves curling and white insects visible",
-    "photo_uri": "gs://demo/chilli-leaf.jpg"
+    "photo_uri": "gs://kisanai-501120-kisan-ai-media/crop-images/chilli-leaf.jpg"
   }'
 ```
 
@@ -178,7 +193,7 @@ Use the existing service classes as stable boundaries:
 - `SmsService`: plug Twilio, Gupshup, or a basic SMS gateway webhook.
 - `WhatsAppService`: plug WhatsApp Business Cloud API webhook verification, templates and media fetch.
 - `CallService`: plug Exotel, Twilio Voice, Knowlarity or another IVR/call provider callback.
-- `WeatherService`: plug IMD/Open-Meteo/Google weather partner feed and ground sensor ingestion.
+- `WeatherService`: use configured weather provider route; IMD is primary when configured and Open-Meteo is the real free fallback.
 - `GovernmentDataService`: plug data.gov.in, IMD, India-WRIS and Soil Health Card ingestion.
 - `CropStageAdvisoryService`: add crop-stage rules and Gemini synthesis for sowing through harvest.
 - `SoilCardVisionService`: replace text-parser fallback with Gemini/Vertex AI Vision soil-card extraction.

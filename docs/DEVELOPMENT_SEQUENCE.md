@@ -45,7 +45,7 @@ Next refinements:
 
 ## 3. Weather Provider
 
-Implement weather context service:
+Status: implemented for normalized context and Open-Meteo fallback.
 
 - Primary: IMD API/agromet where available.
 - Secondary: Open-Meteo.
@@ -60,9 +60,17 @@ Fields needed:
 - Soil moisture/soil temperature if available.
 - Source and fallback status.
 
+Endpoint:
+
+```text
+POST /api/v1/weather/context
+```
+
+Dry-spell advisories now fetch weather automatically when request rainfall is not provided and farm coordinates are available.
+
 ## 4. BigQuery Public Data
 
-Provision raw/curated/ops datasets and load first sample files:
+Provision raw/curated/ops datasets and load first official files:
 
 - Rainfall daily/history.
 - Groundwater depth.

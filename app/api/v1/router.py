@@ -15,6 +15,7 @@ from app.api.v1.endpoints import (
     sms,
     soil_cards,
     voice,
+    weather,
     whatsapp,
 )
 
@@ -30,6 +31,7 @@ api_router.include_router(data.router, prefix="/api/v1/data", tags=["government-
 api_router.include_router(soil_cards.router, prefix="/api/v1/soil-cards", tags=["soil-cards"])
 api_router.include_router(conversations.router, prefix="/api/v1/conversations", tags=["conversations"])
 api_router.include_router(voice.router, prefix="/api/v1/voice", tags=["voice"])
+api_router.include_router(weather.router, prefix="/api/v1/weather", tags=["weather"])
 api_router.include_router(sms.router, prefix="/api/v1/sms", tags=["sms"])
 api_router.include_router(whatsapp.router, prefix="/api/v1/whatsapp", tags=["whatsapp"])
 api_router.include_router(calls.router, prefix="/api/v1/calls", tags=["calls"])

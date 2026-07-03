@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     gcp_region: str = "asia-south1"
     data_store_provider: str = "firestore"
     firestore_database: str = "(default)"
+    imd_api_base_url: str | None = None
+    imd_api_key: str | None = None
+    open_meteo_base_url: str = "https://api.open-meteo.com/v1/forecast"
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-2.5-flash"
     storage_bucket: str | None = None
