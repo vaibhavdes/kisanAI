@@ -8,7 +8,7 @@ Start the backend:
 
 ```bash
 cd ..
-uvicorn app.main:app --reload --port 8080
+DATA_STORE_PROVIDER=local ENABLE_GOOGLE_INTEGRATIONS=false .venv-google/bin/uvicorn app.main:app --reload --port 8080
 ```
 
 Install and run the mobile app:
@@ -16,6 +16,7 @@ Install and run the mobile app:
 ```bash
 cd react_native_chat_app
 npm install
+npm run typecheck
 npm run android
 ```
 
@@ -23,6 +24,12 @@ For web:
 
 ```bash
 EXPO_PUBLIC_API_URL=http://127.0.0.1:8080 npm run web
+```
+
+Static web export check:
+
+```bash
+EXPO_PUBLIC_API_URL=http://127.0.0.1:8080 npm run export:web
 ```
 
 For Android emulator, the default API URL is `http://10.0.2.2:8080`. For a physical Android device, set `EXPO_PUBLIC_API_URL` to your machine LAN IP, for example:

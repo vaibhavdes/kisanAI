@@ -11,5 +11,8 @@ __pycache__/
 *.pyd
 dist/
 build/
+react_native_chat_app/.expo/
+react_native_chat_app/dist/
+react_native_chat_app/node_modules/
 .coverage
 htmlcov/
