@@ -252,6 +252,31 @@ class AlertPlan(BaseModel):
     call_required: bool = False
 
 
+class AlertDeliveryRequest(BaseModel):
+    farmer_id: str
+    message: str = Field(min_length=1, max_length=1000)
+    alert_plan: AlertPlan
+    language: str | None = None
+
+
+class ChannelDeliveryResult(BaseModel):
+    channel: str
+    provider: str | None = None
+    operation: str | None = None
+    status: str
+    sent: bool = False
+    dry_run: bool = False
+    error: str | None = None
+
+
+class AlertDeliveryResponse(BaseModel):
+    farmer_id: str
+    priority: AlertPriority
+    message: str
+    results: list[ChannelDeliveryResult]
+    overall_status: str
+
+
 class CropStageAdvisoryRequest(BaseModel):
     farmer_id: str
     crop: str

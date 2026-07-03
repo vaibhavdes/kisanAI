@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.v1.endpoints import (
+    alerts,
     advisory_test,
     advisories,
     calls,
@@ -27,6 +28,7 @@ api_router.include_router(providers.router, prefix="/api/v1/providers", tags=["p
 api_router.include_router(farmers.router, prefix="/api/v1/farmers", tags=["farmers"])
 api_router.include_router(recommendations.router, prefix="/api/v1/recommendations", tags=["recommendations"])
 api_router.include_router(advisories.router, prefix="/api/v1/advisories", tags=["advisories"])
+api_router.include_router(alerts.router, prefix="/api/v1/alerts", tags=["alerts"])
 api_router.include_router(diagnosis.router, prefix="/api/v1/diagnosis", tags=["diagnosis"])
 api_router.include_router(data.router, prefix="/api/v1/data", tags=["government-data"])
 api_router.include_router(soil_cards.router, prefix="/api/v1/soil-cards", tags=["soil-cards"])

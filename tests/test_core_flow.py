@@ -6,6 +6,7 @@ os.environ["ENABLE_GOOGLE_INTEGRATIONS"] = "false"
 
 from fastapi.testclient import TestClient
 
+from app.core.config import settings
 from app.main import app
 from app.models.schemas import (
     AdvisoryTestResponse,
@@ -237,6 +238,35 @@ def test_whatsapp_crop_photo_creates_diagnosis_ticket() -> None:
     tickets = client.get(f"/api/v1/expert/tickets/{body['farmer_id']}")
     assert tickets.status_code == 200
     assert len(tickets.json()) == 1
+
+
+def test_alert_delivery_uses_configured_channels_in_dry_run(monkeypatch) -> None:
+    farmer_id = create_demo_farmer()
+    monkeypatch.setattr(settings, "authkey_api_key", "secret-key")
+    monkeypatch.setattr(settings, "authkey_sms_sender", "KISAN")
+    monkeypatch.setattr(settings, "authkey_whatsapp_template_id", "template-1")
+    monkeypatch.setattr(settings, "authkey_send_enabled", False)
+
+    response = client.post(
+        "/api/v1/alerts/deliver",
+        json={
+            "farmer_id": farmer_id,
+            "message": "Heavy rain risk today. Keep drainage open and avoid spraying.",
+            "alert_plan": {
+                "priority": "urgent",
+                "channels": ["whatsapp", "sms", "voice_call"],
+                "reason": "Critical rainfall risk.",
+                "call_required": True,
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["overall_status"] == "dry_run"
+    assert {item["channel"] for item in body["results"]} == {"whatsapp", "sms", "voice_call"}
+    assert all(item["provider"] == "authkey" for item in body["results"])
+    assert all(item["status"] == "dry_run" for item in body["results"])
 
 
 def test_voice_transcribe_and_speak_use_configured_fallback(monkeypatch) -> None:
