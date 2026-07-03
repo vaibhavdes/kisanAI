@@ -80,6 +80,10 @@ Open:
 
 Install Flutter SDK first. Then start the backend and run:
 
+brew install --cask flutter
+flutter --version
+flutter doctor
+
 ```bash
 cd flutter_chat_app
 flutter pub get
