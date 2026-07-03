@@ -1,17 +1,13 @@
 import re
 
 from app.models.schemas import SoilCardExtractionRequest, SoilCardExtractionResponse
+from app.services.vision_ocr_service import VisionOcrService
 
 
 class SoilCardVisionService:
     def extract(self, payload: SoilCardExtractionRequest) -> SoilCardExtractionResponse:
-        if payload.image_uri and not payload.extracted_text:
-            return SoilCardExtractionResponse(
-                source="vision_provider_required",
-                confidence=0.0,
-                needs_manual_review=True,
-                raw_text=None,
-            )
+        if (payload.image_uri or payload.image_base64) and not payload.extracted_text:
+            return VisionOcrService().extract_soil_card(payload)
 
         text = payload.extracted_text or ""
         parsed = {

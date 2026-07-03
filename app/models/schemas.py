@@ -282,6 +282,8 @@ class DiagnosisRequest(BaseModel):
     symptoms_text: str | None = None
     voice_transcript: str | None = None
     photo_uri: str | None = None
+    image_base64: str | None = None
+    mime_type: str = "image/jpeg"
     language: str | None = None
 
 
@@ -292,6 +294,8 @@ class DiagnosisResult(BaseModel):
     severity: RiskLevel
     immediate_action: str
     needs_expert_followup: bool
+    source: str | None = None
+    model: str | None = None
 
 
 class ExpertTicket(BaseModel):
@@ -313,12 +317,15 @@ class DiagnosisResponse(DiagnosisResult):
 class SoilCardExtractionRequest(BaseModel):
     farmer_id: str | None = None
     image_uri: str | None = None
+    image_base64: str | None = None
+    mime_type: str = "image/jpeg"
     extracted_text: str | None = None
     language: str = "en-IN"
 
 
 class SoilCardExtractionResponse(BaseModel):
     source: str
+    model: str | None = None
     ph: float | None = None
     ec: float | None = None
     organic_carbon: float | None = None

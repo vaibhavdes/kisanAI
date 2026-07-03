@@ -481,6 +481,80 @@ def test_extension_interfaces_for_data_soil_and_conversation(monkeypatch) -> Non
     assert len(recent_response.json()) == 1
 
 
+def test_crop_photo_diagnosis_uses_vision_and_creates_expert_ticket(monkeypatch) -> None:
+    farmer_id = create_demo_farmer()
+
+    def fake_generate_json(self, provider, prompt, image, mime_type):
+        assert image == b"leaf image"
+        return (
+            {
+                "likely_issue": "Possible leaf blight",
+                "confidence": 0.84,
+                "severity": "high",
+                "immediate_action": "Isolate affected leaves and request expert validation.",
+                "needs_expert_followup": True,
+            },
+            "gemini-2.5-flash",
+        )
+
+    monkeypatch.setattr("app.services.vision_ocr_service.settings.enable_google_integrations", True)
+    monkeypatch.setattr("app.services.vision_ocr_service.VisionOcrService._generate_json", fake_generate_json)
+
+    response = client.post(
+        "/api/v1/diagnosis/log",
+        json={
+            "farmer_id": farmer_id,
+            "crop": "chilli",
+            "symptoms_text": "spots on leaves",
+            "image_base64": base64.b64encode(b"leaf image").decode("ascii"),
+            "mime_type": "image/jpeg",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["source"] == "vertex_ai_vision"
+    assert body["likely_issue"] == "Possible leaf blight"
+    assert body["expert_ticket"]["issue"] == "Possible leaf blight"
+
+
+def test_soil_card_image_extraction_uses_vision(monkeypatch) -> None:
+    def fake_generate_json(self, provider, prompt, image, mime_type):
+        assert image == b"soil card image"
+        return (
+            {
+                "ph": 6.7,
+                "ec": 0.38,
+                "organic_carbon": 0.52,
+                "nitrogen": "medium",
+                "phosphorus": 18,
+                "potassium": "high",
+                "micronutrients": {"zinc": "low"},
+                "confidence": 0.88,
+                "needs_manual_review": False,
+                "raw_text": "pH 6.7 EC 0.38 OC 0.52",
+            },
+            "gemini-2.5-flash",
+        )
+
+    monkeypatch.setattr("app.services.vision_ocr_service.VisionOcrService._generate_json", fake_generate_json)
+
+    response = client.post(
+        "/api/v1/soil-cards/extract",
+        json={
+            "image_base64": base64.b64encode(b"soil card image").decode("ascii"),
+            "mime_type": "image/jpeg",
+            "language": "en-IN",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["source"] == "vertex_ai_vision"
+    assert body["ph"] == 6.7
+    assert body["micronutrients"]["zinc"] == "low"
+
+
 def test_bigquery_public_context_maps_available_signals() -> None:
     class Row(dict):
         def items(self):
@@ -724,6 +798,8 @@ def test_provider_config_can_be_switched_by_feature() -> None:
     assert routes["weather"]["secondary"] == "open_meteo"
     assert routes["llm_advisory"]["primary"] == "vertex_ai"
     assert routes["llm_advisory"]["secondary"] == "gemini"
+    assert routes["vision_ocr"]["primary"] == "vertex_ai_vision"
+    assert routes["vision_ocr"]["secondary"] == "gemini_vision"
     assert routes["satellite"]["primary"] == "earth_engine"
     assert routes["satellite"]["allow_fallback"] is False
 

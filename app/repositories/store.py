@@ -299,8 +299,9 @@ def default_provider_routes() -> dict[ProviderFeature, ProviderRoute]:
         ),
         ProviderRoute(
             feature=ProviderFeature.vision_ocr,
-            primary=ProviderName.gemini_vision,
-            secondary=ProviderName.vertex_ai_vision,
+            primary=ProviderName.vertex_ai_vision,
+            secondary=ProviderName.gemini_vision,
+            note="Prefer Vertex AI Vision for hackathon credits; Gemini Vision remains fallback.",
         ),
         ProviderRoute(
             feature=ProviderFeature.satellite,
