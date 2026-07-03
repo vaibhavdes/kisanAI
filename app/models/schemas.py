@@ -381,6 +381,9 @@ class ProactiveAlertRunRequest(BaseModel):
     soil_moisture: float | None = Field(default=None, ge=0, le=1)
     temperature_c: float | None = None
     max_farmers: int = Field(default=100, ge=1, le=500)
+    run_date: str | None = None
+    idempotency_key: str | None = None
+    dedupe: bool = True
 
 
 class ProactiveAlertFarmerResult(BaseModel):
@@ -398,7 +401,33 @@ class ProactiveAlertRunResponse(BaseModel):
     generated: int
     skipped: int
     delivered: int
+    run_date: str
+    idempotency_key: str
     results: list[ProactiveAlertFarmerResult]
+
+
+class AlertRunRecord(BaseModel):
+    key: str
+    farmer_id: str
+    crop: str
+    run_date: str
+    risk_level: RiskLevel
+    priority: AlertPriority
+    message: str
+    delivery_status: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class PubSubMessage(BaseModel):
+    data: str | None = None
+    messageId: str | None = None
+    publishTime: str | None = None
+    attributes: dict[str, str] = Field(default_factory=dict)
+
+
+class PubSubPushRequest(BaseModel):
+    message: PubSubMessage
+    subscription: str | None = None
 
 
 class CropStageAdvisoryRequest(BaseModel):

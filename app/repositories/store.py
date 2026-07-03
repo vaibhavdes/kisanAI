@@ -4,6 +4,7 @@ from typing import Protocol
 
 from app.core.config import settings
 from app.models.schemas import (
+    AlertRunRecord,
     ChannelDeliveryReceipt,
     ConversationMessage,
     ExpertTicket,
@@ -46,6 +47,10 @@ class AppStore(Protocol):
 
     def list_delivery_receipts(self, limit: int = 100) -> list[ChannelDeliveryReceipt]: ...
 
+    def save_alert_run_record(self, record: AlertRunRecord) -> AlertRunRecord: ...
+
+    def get_alert_run_record(self, key: str) -> AlertRunRecord | None: ...
+
     def list_provider_routes(self) -> list[ProviderRoute]: ...
 
     def get_provider_route(self, feature: ProviderFeature) -> ProviderRoute: ...
@@ -62,6 +67,7 @@ class LocalStore:
         self.tickets: list[ExpertTicket] = []
         self.conversations: list[ConversationMessage] = []
         self.delivery_receipts: list[ChannelDeliveryReceipt] = []
+        self.alert_run_records: dict[str, AlertRunRecord] = {}
         self.provider_routes: dict[ProviderFeature, ProviderRoute] = default_provider_routes()
         self.provider_routes_updated_at = datetime.now(UTC)
 
@@ -133,6 +139,13 @@ class LocalStore:
     def list_delivery_receipts(self, limit: int = 100) -> list[ChannelDeliveryReceipt]:
         return self.delivery_receipts[-limit:]
 
+    def save_alert_run_record(self, record: AlertRunRecord) -> AlertRunRecord:
+        self.alert_run_records[record.key] = record
+        return record
+
+    def get_alert_run_record(self, key: str) -> AlertRunRecord | None:
+        return self.alert_run_records.get(key)
+
     def list_provider_routes(self) -> list[ProviderRoute]:
         return list(self.provider_routes.values())
 
@@ -150,6 +163,7 @@ class LocalStore:
         self.tickets.clear()
         self.conversations.clear()
         self.delivery_receipts.clear()
+        self.alert_run_records.clear()
         self.provider_routes = default_provider_routes()
         self.provider_routes_updated_at = datetime.now(UTC)
 
@@ -298,6 +312,14 @@ class FirestoreStore:
             .stream()
         )
         return list(reversed([ChannelDeliveryReceipt(**doc.to_dict()) for doc in docs]))
+
+    def save_alert_run_record(self, record: AlertRunRecord) -> AlertRunRecord:
+        self.client.collection("alert_run_records").document(record.key).set(record.model_dump(mode="json"))
+        return record
+
+    def get_alert_run_record(self, key: str) -> AlertRunRecord | None:
+        doc = self.client.collection("alert_run_records").document(key).get()
+        return AlertRunRecord(**doc.to_dict()) if doc.exists else None
 
     def list_provider_routes(self) -> list[ProviderRoute]:
         docs = self.client.collection("provider_routes").stream()

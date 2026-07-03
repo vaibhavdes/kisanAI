@@ -1,7 +1,10 @@
+from datetime import date
+
 from app.models.schemas import (
     AlertDeliveryRequest,
     AlertPlan,
     AlertPriority,
+    AlertRunRecord,
     ConversationLogRequest,
     ConversationRole,
     DrySpellAdvisoryRequest,
@@ -29,12 +32,16 @@ PRIORITY_RANK = {
 class ProactiveAlertService:
     def run_daily(self, payload: ProactiveAlertRunRequest) -> ProactiveAlertRunResponse:
         farmers = self._farmers_for_run(payload)
-        results = [self._process_farmer(farmer, payload) for farmer in farmers]
+        run_date = payload.run_date or date.today().isoformat()
+        run_key = payload.idempotency_key or f"daily-dry-spell:{run_date}:{payload.crop}"
+        results = [self._process_farmer(farmer, payload, run_date, run_key) for farmer in farmers]
         return ProactiveAlertRunResponse(
             processed=len(results),
             generated=sum(1 for result in results if result.generated),
             skipped=sum(1 for result in results if not result.generated),
             delivered=sum(1 for result in results if result.delivery and result.delivery.overall_status in {"sent", "dry_run"}),
+            run_date=run_date,
+            idempotency_key=run_key,
             results=results,
         )
 
@@ -48,6 +55,8 @@ class ProactiveAlertService:
         self,
         farmer: FarmerResponse,
         payload: ProactiveAlertRunRequest,
+        run_date: str,
+        run_key: str,
     ) -> ProactiveAlertFarmerResult:
         if not payload.rainfall_forecast_mm and (farmer.farm.latitude is None or farmer.farm.longitude is None):
             return ProactiveAlertFarmerResult(
@@ -89,6 +98,17 @@ class ProactiveAlertService:
             )
 
         message = self._message(advisory.advisory, advisory.fertilizer_note)
+        alert_key = self._alert_key(run_key, farmer.id, advisory.risk_level, alert_plan.priority)
+        if payload.dedupe and store.get_alert_run_record(alert_key):
+            return ProactiveAlertFarmerResult(
+                farmer_id=farmer.id,
+                generated=False,
+                skipped_reason="duplicate_alert",
+                risk_level=advisory.risk_level,
+                priority=alert_plan.priority,
+                advisory=message,
+            )
+
         delivery = AlertDeliveryService().deliver(
             farmer,
             AlertDeliveryRequest(
@@ -99,6 +119,18 @@ class ProactiveAlertService:
             ),
         )
         self._log_alert(farmer.id, farmer.language, message, alert_plan)
+        store.save_alert_run_record(
+            AlertRunRecord(
+                key=alert_key,
+                farmer_id=farmer.id,
+                crop=payload.crop,
+                run_date=run_date,
+                risk_level=advisory.risk_level,
+                priority=alert_plan.priority,
+                message=message,
+                delivery_status=delivery.overall_status,
+            )
+        )
         return ProactiveAlertFarmerResult(
             farmer_id=farmer.id,
             generated=True,
@@ -112,6 +144,16 @@ class ProactiveAlertService:
         if fertilizer_note and fertilizer_note not in advisory:
             return f"{advisory} {fertilizer_note}"
         return advisory
+
+    def _alert_key(
+        self,
+        run_key: str,
+        farmer_id: str,
+        risk_level,
+        priority: AlertPriority,
+    ) -> str:
+        safe_run_key = run_key.replace("/", "_")
+        return f"{safe_run_key}:{farmer_id}:{risk_level.value}:{priority.value}"
 
     def _log_alert(self, farmer_id: str, language: str, message: str, alert_plan: AlertPlan) -> None:
         ConversationStore().log(

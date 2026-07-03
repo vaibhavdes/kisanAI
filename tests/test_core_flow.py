@@ -1,4 +1,5 @@
 import base64
+import json
 import os
 
 os.environ["DATA_STORE_PROVIDER"] = "local"
@@ -410,6 +411,7 @@ def test_daily_alert_runner_generates_and_delivers_high_risk_alert(monkeypatch) 
     assert body["processed"] == 1
     assert body["generated"] == 1
     assert body["delivered"] == 1
+    assert body["idempotency_key"].startswith("daily-dry-spell:")
     result = body["results"][0]
     assert result["risk_level"] == "critical"
     assert result["priority"] == "urgent"
@@ -418,6 +420,56 @@ def test_daily_alert_runner_generates_and_delivers_high_risk_alert(monkeypatch) 
     recent = client.get(f"/api/v1/conversations/{farmer_id}")
     assert recent.status_code == 200
     assert recent.json()[-1]["intent"] == "daily_dry_spell_alert"
+
+    duplicate_response = client.post(
+        "/api/v1/alerts/run-daily",
+        json={
+            "farmer_ids": [farmer_id],
+            "crop": "maize",
+            "min_priority": "medium",
+            "rainfall_forecast_mm": [0, 0, 0, 0, 0, 0, 0],
+            "soil_moisture": 0.12,
+            "temperature_c": 38,
+            "run_date": body["run_date"],
+        },
+    )
+    assert duplicate_response.status_code == 200
+    duplicate = duplicate_response.json()
+    assert duplicate["generated"] == 0
+    assert duplicate["skipped"] == 1
+    assert duplicate["results"][0]["skipped_reason"] == "duplicate_alert"
+
+
+def test_daily_alert_runner_accepts_pubsub_push_payload(monkeypatch) -> None:
+    farmer_id = create_demo_farmer()
+    monkeypatch.setattr(settings, "authkey_api_key", "secret-key")
+    monkeypatch.setattr(settings, "authkey_sms_sender", "KISAN")
+    monkeypatch.setattr(settings, "authkey_whatsapp_template_id", "template-1")
+    monkeypatch.setattr(settings, "authkey_send_enabled", False)
+    data = {
+        "farmer_ids": [farmer_id],
+        "crop": "maize",
+        "min_priority": "medium",
+        "rainfall_forecast_mm": [0, 0, 0, 0, 0, 0, 0],
+        "soil_moisture": 0.12,
+        "temperature_c": 38,
+    }
+
+    response = client.post(
+        "/api/v1/alerts/run-daily/pubsub",
+        json={
+            "message": {
+                "messageId": "pubsub-alert-1",
+                "data": base64.b64encode(json.dumps(data).encode("utf-8")).decode("ascii"),
+            },
+            "subscription": "projects/kisanai-501120/subscriptions/kisan-alerts-daily",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["idempotency_key"] == "pubsub:pubsub-alert-1"
+    assert body["generated"] == 1
 
 
 def test_daily_alert_runner_skips_farmer_without_location_or_forecast() -> None:
