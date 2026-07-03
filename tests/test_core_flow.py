@@ -1,3 +1,4 @@
+import base64
 import os
 
 os.environ["DATA_STORE_PROVIDER"] = "local"
@@ -13,6 +14,8 @@ from app.models.schemas import (
     GovernmentDataContextResponse,
     RiskLevel,
     WeatherContextRequest,
+    VoiceSpeakResponse,
+    VoiceTranscribeResponse,
 )
 from app.repositories.store import store
 from app.services.bigquery_public_data_service import BigQueryPublicDataService
@@ -139,6 +142,59 @@ def test_low_connectivity_channels_accept_farmer_intent() -> None:
     )
     assert call_response.status_code == 200
     assert call_response.json()["intent"] == "crop_recommendation"
+
+
+def test_voice_transcribe_and_speak_use_configured_fallback(monkeypatch) -> None:
+    calls: list[str] = []
+
+    def google_stt_failure(self, payload, audio):
+        calls.append("google_stt")
+        raise RuntimeError("google stt unavailable")
+
+    def sarvam_stt_success(self, payload, audio):
+        calls.append("sarvam_stt")
+        return VoiceTranscribeResponse(
+            transcript="Should I irrigate today?",
+            language="en-IN",
+            provider="sarvam_stt",
+            confidence=0.91,
+        )
+
+    def google_tts_failure(self, payload):
+        calls.append("google_tts")
+        raise RuntimeError("google tts unavailable")
+
+    def sarvam_tts_success(self, payload):
+        calls.append("sarvam_tts")
+        return VoiceSpeakResponse(
+            audio_base64=base64.b64encode(b"audio").decode("ascii"),
+            provider="sarvam_tts",
+            audio_encoding=payload.audio_encoding,
+            content_type="audio/mpeg",
+        )
+
+    monkeypatch.setattr("app.services.voice_service.VoiceService._transcribe_with_google", google_stt_failure)
+    monkeypatch.setattr("app.services.voice_service.VoiceService._transcribe_with_sarvam", sarvam_stt_success)
+    monkeypatch.setattr("app.services.voice_service.VoiceService._speak_with_google", google_tts_failure)
+    monkeypatch.setattr("app.services.voice_service.VoiceService._speak_with_sarvam", sarvam_tts_success)
+
+    transcribe_response = client.post(
+        "/api/v1/voice/transcribe",
+        json={
+            "audio_base64": base64.b64encode(b"fake wav").decode("ascii"),
+            "language": "en-IN",
+        },
+    )
+    assert transcribe_response.status_code == 200
+    assert transcribe_response.json()["provider"] == "sarvam_stt"
+
+    speak_response = client.post(
+        "/api/v1/voice/speak",
+        json={"text": "Avoid spraying before rain.", "language": "en-IN"},
+    )
+    assert speak_response.status_code == 200
+    assert speak_response.json()["provider"] == "sarvam_tts"
+    assert calls == ["google_stt", "sarvam_stt", "google_tts", "sarvam_tts"]
 
 
 def test_progressive_farmer_identity_reuses_phone_across_channels() -> None:

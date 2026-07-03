@@ -19,6 +19,7 @@ VERTEX_AI_MODEL=gemini-2.5-flash
 STORAGE_BUCKET=kisanai-501120-kisan-ai-media
 PUBSUB_ALERT_TOPIC=kisan-alerts
 MAPS_API_KEY=replace-local-only
+SARVAM_API_KEY=optional-fallback-key
 ```
 
 If a real key was placed in `Details.txt` or `.env.example`, rotate it in Google AI Studio and keep the new value only in `.env`.

@@ -334,6 +334,7 @@ class SoilCardExtractionResponse(BaseModel):
 class VoiceIntakeRequest(BaseModel):
     farmer_id: str
     audio_uri: str | None = None
+    audio_base64: str | None = None
     transcript: str | None = None
     language: str | None = None
 
@@ -344,6 +345,41 @@ class VoiceIntakeResponse(BaseModel):
     response_text: str
     response_language: str
     audio_url: str | None = None
+    stt_provider: str | None = None
+    tts_provider: str | None = None
+    response_audio_base64: str | None = None
+    response_audio_content_type: str | None = None
+
+
+class VoiceTranscribeRequest(BaseModel):
+    farmer_id: str | None = None
+    audio_base64: str | None = None
+    audio_uri: str | None = None
+    language: str | None = None
+    audio_encoding: str = "LINEAR16"
+    content_type: str = "audio/wav"
+    sample_rate_hertz: int = Field(default=16000, ge=8000, le=48000)
+
+
+class VoiceTranscribeResponse(BaseModel):
+    transcript: str
+    language: str | None = None
+    provider: str
+    confidence: float | None = Field(default=None, ge=0, le=1)
+
+
+class VoiceSpeakRequest(BaseModel):
+    farmer_id: str | None = None
+    text: str
+    language: str = "hi-IN"
+    audio_encoding: str = "MP3"
+
+
+class VoiceSpeakResponse(BaseModel):
+    audio_base64: str
+    provider: str
+    audio_encoding: str
+    content_type: str
 
 
 class SmsWebhookRequest(BaseModel):

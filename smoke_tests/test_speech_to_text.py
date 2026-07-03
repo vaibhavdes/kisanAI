@@ -1,21 +1,34 @@
-from common import optional_env, print_ok, require_package
+from common import optional_env, print_ok, require_env, require_package
 
-require_package("google.cloud.speech", "pip install -r requirements.txt")
+require_package("google.cloud.speech_v2", "pip install -r requirements.txt")
 
-from google.cloud import speech
+from google.cloud.speech_v2 import SpeechClient
+from google.cloud.speech_v2.types import cloud_speech
 
 
-client_options = {}
-project = optional_env("GOOGLE_CLOUD_PROJECT")
-client = speech.SpeechClient(**client_options)
-audio = speech.RecognitionAudio(content=b"\0" * 32000)
-config = speech.RecognitionConfig(
-    encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
-    sample_rate_hertz=16000,
-    language_code="en-US",
+project = require_env("GOOGLE_CLOUD_PROJECT")
+location = optional_env("GOOGLE_CLOUD_LOCATION", "global")
+language = optional_env("STT_TEST_LANGUAGE", "en-IN")
+
+client = SpeechClient()
+recognizer = f"projects/{project}/locations/{location}/recognizers/_"
+audio = b"\0" * 32000
+config = cloud_speech.RecognitionConfig(
+    explicit_decoding_config=cloud_speech.ExplicitDecodingConfig(
+        encoding=cloud_speech.ExplicitDecodingConfig.AudioEncoding.LINEAR16,
+        sample_rate_hertz=16000,
+        audio_channel_count=1,
+    ),
+    language_codes=[language],
+    model="latest_short",
 )
-response = client.recognize(config=config, audio=audio)
+request = cloud_speech.RecognizeRequest(
+    recognizer=recognizer,
+    config=config,
+    content=audio,
+)
+response = client.recognize(request=request)
 print_ok(
-    "Speech-to-Text API responded "
-    f"for project hint: {project or 'ADC default'}; results={len(response.results)}"
+    f"Speech-to-Text v2 responded for {recognizer}; "
+    f"language={language}; results={len(response.results)}"
 )

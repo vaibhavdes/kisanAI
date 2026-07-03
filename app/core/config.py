@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     authkey_whatsapp_template_id: str | None = None
     authkey_whatsapp_media_template_id: str | None = None
     authkey_send_enabled: bool = False
+    sarvam_api_key: str | None = None
+    sarvam_api_base_url: str = "https://api.sarvam.ai"
+    sarvam_stt_model: str = "saaras:v3"
     rythu_seva_default_center: str = "RSK Demo Center"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
