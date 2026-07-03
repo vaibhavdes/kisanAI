@@ -166,6 +166,46 @@ class CropRecommendationResponse(BaseModel):
     data_sources: dict[str, str | float | int | bool | None]
 
 
+class FarmCoordinate(BaseModel):
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+
+
+class SatelliteSignalRequest(BaseModel):
+    farmer_id: str | None = None
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    polygon: list[FarmCoordinate] | None = None
+    buffer_m: int = Field(default=250, ge=20, le=2000)
+    days: int = Field(default=90, ge=15, le=365)
+    history_periods: int = Field(default=3, ge=1, le=12)
+
+
+class SatelliteHistoryPoint(BaseModel):
+    start_date: str
+    end_date: str
+    ndvi: float | None = None
+    ndwi: float | None = None
+    water_stress: str | None = None
+
+
+class SatelliteSignalResponse(BaseModel):
+    farmer_id: str | None = None
+    latitude: float
+    longitude: float
+    geometry_type: str
+    buffer_m: int | None = None
+    start_date: str
+    end_date: str
+    source: str
+    ndvi: float | None = None
+    ndwi: float | None = None
+    water_stress: str
+    vegetation_status: str
+    history: list[SatelliteHistoryPoint] = Field(default_factory=list)
+    note: str
+
+
 class DrySpellAdvisoryRequest(BaseModel):
     farmer_id: str
     crop: str

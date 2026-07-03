@@ -20,12 +20,23 @@ def recommend_crop(payload: CropRecommendationRequest) -> CropRecommendationResp
     ndvi = payload.ndvi
     satellite_source = "request" if payload.ndvi is not None else None
     satellite_note = None
+    satellite_ndwi = None
+    satellite_water_stress = None
+    satellite_vegetation_status = None
     if ndvi is None and farmer.farm.latitude is not None and farmer.farm.longitude is not None:
         try:
-            snapshot = EarthEngineService().get_ndvi(farmer.farm.latitude, farmer.farm.longitude)
-            ndvi = snapshot.ndvi
-            satellite_source = snapshot.source
-            satellite_note = snapshot.note
+            signal = EarthEngineService().get_farm_signal(
+                farmer_id=farmer.id,
+                latitude=farmer.farm.latitude,
+                longitude=farmer.farm.longitude,
+                history_periods=1,
+            )
+            ndvi = signal.ndvi
+            satellite_ndwi = signal.ndwi
+            satellite_water_stress = signal.water_stress
+            satellite_vegetation_status = signal.vegetation_status
+            satellite_source = signal.source
+            satellite_note = signal.note
         except Exception as exc:
             satellite_note = f"Earth Engine NDVI unavailable: {exc}"
 
@@ -52,6 +63,9 @@ def recommend_crop(payload: CropRecommendationRequest) -> CropRecommendationResp
             public_context=public_context,
             satellite_source=satellite_source,
             satellite_note=satellite_note,
+            satellite_ndwi=satellite_ndwi,
+            satellite_water_stress=satellite_water_stress,
+            satellite_vegetation_status=satellite_vegetation_status,
             public_context_error=public_context_error,
         )
     except ValueError as exc:

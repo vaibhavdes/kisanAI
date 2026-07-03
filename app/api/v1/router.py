@@ -15,6 +15,7 @@ from app.api.v1.endpoints import (
     health,
     providers,
     recommendations,
+    satellite,
     sms,
     soil_cards,
     translate,
@@ -30,6 +31,7 @@ api_router.include_router(advisory_test.router, tags=["advisory-test"])
 api_router.include_router(providers.router, prefix="/api/v1/providers", tags=["providers"])
 api_router.include_router(farmers.router, prefix="/api/v1/farmers", tags=["farmers"])
 api_router.include_router(recommendations.router, prefix="/api/v1/recommendations", tags=["recommendations"])
+api_router.include_router(satellite.router, prefix="/api/v1/satellite", tags=["satellite"])
 api_router.include_router(advisories.router, prefix="/api/v1/advisories", tags=["advisories"])
 api_router.include_router(alerts.router, prefix="/api/v1/alerts", tags=["alerts"])
 api_router.include_router(diagnosis.router, prefix="/api/v1/diagnosis", tags=["diagnosis"])

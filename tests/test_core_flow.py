@@ -14,6 +14,8 @@ from app.models.schemas import (
     GovernmentDataContextRequest,
     GovernmentDataContextResponse,
     RiskLevel,
+    SatelliteHistoryPoint,
+    SatelliteSignalResponse,
     DetectLanguageResponse,
     TranslateTextResponse,
     WeatherContextRequest,
@@ -1225,6 +1227,103 @@ def test_crop_recommendation_uses_public_context_when_rainfall_is_missing(monkey
     assert body["data_sources"]["rainfall"] == 640.0
     assert body["data_sources"]["rainfallSource"] == "district_rainfall_normals"
     assert body["data_sources"]["groundwaterDepthM"] == 18.0
+
+
+def test_satellite_farm_signal_accepts_farmer_profile_and_polygon(monkeypatch) -> None:
+    farmer_id = create_demo_farmer()
+
+    def fake_signal(self, **kwargs):
+        assert kwargs["farmer_id"] == farmer_id
+        assert kwargs["latitude"] == 16.3
+        assert len(kwargs["polygon"]) == 3
+        return SatelliteSignalResponse(
+            farmer_id=kwargs["farmer_id"],
+            latitude=kwargs["latitude"],
+            longitude=kwargs["longitude"],
+            geometry_type="polygon",
+            start_date="2026-04-05",
+            end_date="2026-07-04",
+            source="earth_engine_sentinel_2",
+            ndvi=0.52,
+            ndwi=-0.04,
+            water_stress="medium",
+            vegetation_status="healthy",
+            history=[
+                SatelliteHistoryPoint(
+                    start_date="2026-04-05",
+                    end_date="2026-05-05",
+                    ndvi=0.42,
+                    ndwi=-0.1,
+                    water_stress="medium",
+                )
+            ],
+            note="Sentinel-2 farm signal.",
+        )
+
+    monkeypatch.setattr("app.services.earth_engine_service.EarthEngineService.get_farm_signal", fake_signal)
+
+    response = client.post(
+        "/api/v1/satellite/farm-signal",
+        json={
+            "farmer_id": farmer_id,
+            "polygon": [
+                {"latitude": 16.3, "longitude": 80.4},
+                {"latitude": 16.301, "longitude": 80.4},
+                {"latitude": 16.301, "longitude": 80.401},
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["source"] == "earth_engine_sentinel_2"
+    assert body["geometry_type"] == "polygon"
+    assert body["ndvi"] == 0.52
+    assert body["ndwi"] == -0.04
+    assert body["water_stress"] == "medium"
+    assert body["history"][0]["ndvi"] == 0.42
+
+
+def test_crop_recommendation_uses_earth_engine_farm_signal(monkeypatch) -> None:
+    farmer_id = create_demo_farmer()
+
+    def fake_signal(self, **kwargs):
+        assert kwargs["farmer_id"] == farmer_id
+        return SatelliteSignalResponse(
+            farmer_id=kwargs["farmer_id"],
+            latitude=kwargs["latitude"],
+            longitude=kwargs["longitude"],
+            geometry_type="point_buffer",
+            buffer_m=250,
+            start_date="2026-04-05",
+            end_date="2026-07-04",
+            source="earth_engine_sentinel_2",
+            ndvi=0.36,
+            ndwi=-0.18,
+            water_stress="high",
+            vegetation_status="moderate",
+            note="Sentinel-2 farm signal.",
+        )
+
+    monkeypatch.setattr("app.services.earth_engine_service.EarthEngineService.get_farm_signal", fake_signal)
+
+    response = client.post(
+        "/api/v1/recommendations/crop",
+        json={
+            "farmer_id": farmer_id,
+            "season": "kharif",
+            "expected_rainfall_mm": 620,
+            "water_availability": "medium",
+        },
+    )
+
+    assert response.status_code == 200
+    data_sources = response.json()["data_sources"]
+    assert data_sources["ndvi"] == 0.36
+    assert data_sources["ndwi"] == -0.18
+    assert data_sources["waterStress"] == "high"
+    assert data_sources["vegetationStatus"] == "moderate"
+    assert data_sources["satellite"] == "earth_engine_sentinel_2"
 
 
 def test_provider_config_can_be_switched_by_feature() -> None:

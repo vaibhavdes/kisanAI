@@ -1,7 +1,9 @@
 from datetime import date, timedelta
 
-from app.core.config import settings
 from pydantic import BaseModel
+
+from app.core.config import settings
+from app.models.schemas import FarmCoordinate, SatelliteHistoryPoint, SatelliteSignalResponse
 
 
 class NdviSnapshot(BaseModel):
@@ -12,36 +14,148 @@ class NdviSnapshot(BaseModel):
 
 class EarthEngineService:
     def get_ndvi(self, latitude: float, longitude: float) -> NdviSnapshot:
+        signal = self.get_farm_signal(latitude=latitude, longitude=longitude, history_periods=1)
+        if signal.ndvi is None:
+            raise RuntimeError("Earth Engine did not return NDVI for this location and date range")
+        return NdviSnapshot(
+            ndvi=signal.ndvi,
+            source=signal.source,
+            note=signal.note,
+        )
+
+    def get_farm_signal(
+        self,
+        latitude: float,
+        longitude: float,
+        polygon: list[FarmCoordinate] | None = None,
+        buffer_m: int = 250,
+        days: int = 90,
+        history_periods: int = 3,
+        farmer_id: str | None = None,
+    ) -> SatelliteSignalResponse:
         import ee
 
         ee.Initialize(project=settings.google_cloud_project)
-        point = ee.Geometry.Point([longitude, latitude])
-        start = (date.today() - timedelta(days=90)).isoformat()
-        end = date.today().isoformat()
+        end = date.today()
+        start = end - timedelta(days=days)
+        geometry, geometry_type = self._geometry(ee, latitude, longitude, polygon, buffer_m)
+        collection = self._collection(ee, geometry, start.isoformat(), end.isoformat())
+        summary = self._mean_indices(ee, collection.median(), geometry)
+        ndvi = self._rounded(summary.get("NDVI"))
+        ndwi = self._rounded(summary.get("NDWI"))
 
-        collection = (
+        return SatelliteSignalResponse(
+            farmer_id=farmer_id,
+            latitude=latitude,
+            longitude=longitude,
+            geometry_type=geometry_type,
+            buffer_m=buffer_m if geometry_type == "point_buffer" else None,
+            start_date=start.isoformat(),
+            end_date=end.isoformat(),
+            source="earth_engine_sentinel_2",
+            ndvi=ndvi,
+            ndwi=ndwi,
+            water_stress=self._water_stress(ndvi, ndwi),
+            vegetation_status=self._vegetation_status(ndvi),
+            history=self._history(ee, geometry, start, end, history_periods),
+            note=(
+                f"Sentinel-2 median NDVI/NDWI for {geometry_type} "
+                f"from {start.isoformat()} to {end.isoformat()}."
+            ),
+        )
+
+    def _geometry(
+        self,
+        ee,
+        latitude: float,
+        longitude: float,
+        polygon: list[FarmCoordinate] | None,
+        buffer_m: int,
+    ):
+        if polygon and len(polygon) >= 3:
+            coordinates = [[point.longitude, point.latitude] for point in polygon]
+            if coordinates[0] != coordinates[-1]:
+                coordinates.append(coordinates[0])
+            return ee.Geometry.Polygon([coordinates]), "polygon"
+        return ee.Geometry.Point([longitude, latitude]).buffer(buffer_m), "point_buffer"
+
+    def _collection(self, ee, geometry, start: str, end: str):
+        return (
             ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
-            .filterBounds(point)
+            .filterBounds(geometry)
             .filterDate(start, end)
             .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 35))
-            .map(self._add_ndvi)
-            .select("NDVI")
+            .map(self._add_indices)
+            .select(["NDVI", "NDWI"])
         )
-        value = collection.median().reduceRegion(
+
+    def _add_indices(self, image):
+        ndvi = image.normalizedDifference(["B8", "B4"]).rename("NDVI")
+        ndwi = image.normalizedDifference(["B3", "B8"]).rename("NDWI")
+        return image.addBands([ndvi, ndwi])
+
+    def _mean_indices(self, ee, image, geometry) -> dict:
+        values = image.reduceRegion(
             reducer=ee.Reducer.mean(),
-            geometry=point.buffer(250),
+            geometry=geometry,
             scale=10,
             maxPixels=1_000_000,
-        ).get("NDVI")
-        ndvi = value.getInfo()
+        ).getInfo()
+        return values or {}
+
+    def _history(
+        self,
+        ee,
+        geometry,
+        start: date,
+        end: date,
+        periods: int,
+    ) -> list[SatelliteHistoryPoint]:
+        total_days = max(1, (end - start).days)
+        period_days = max(1, total_days // periods)
+        points: list[SatelliteHistoryPoint] = []
+        cursor = start
+
+        while cursor < end and len(points) < periods:
+            period_end = min(end, cursor + timedelta(days=period_days))
+            collection = self._collection(ee, geometry, cursor.isoformat(), period_end.isoformat())
+            values = self._mean_indices(ee, collection.median(), geometry)
+            ndvi = self._rounded(values.get("NDVI"))
+            ndwi = self._rounded(values.get("NDWI"))
+            points.append(
+                SatelliteHistoryPoint(
+                    start_date=cursor.isoformat(),
+                    end_date=period_end.isoformat(),
+                    ndvi=ndvi,
+                    ndwi=ndwi,
+                    water_stress=self._water_stress(ndvi, ndwi),
+                )
+            )
+            cursor = period_end
+
+        return points
+
+    def _rounded(self, value) -> float | None:
+        if value is None:
+            return None
+        return round(float(value), 3)
+
+    def _water_stress(self, ndvi: float | None, ndwi: float | None) -> str:
+        if ndvi is None and ndwi is None:
+            return "unknown"
+        if ndwi is not None and ndwi < -0.15:
+            return "high"
+        if ndwi is not None and ndwi < 0:
+            return "medium"
+        if ndvi is not None and ndvi < 0.25:
+            return "medium"
+        return "low"
+
+    def _vegetation_status(self, ndvi: float | None) -> str:
         if ndvi is None:
-            raise RuntimeError("Earth Engine did not return NDVI for this location and date range")
-
-        return NdviSnapshot(
-            ndvi=round(float(ndvi), 3),
-            source="earth_engine_sentinel_2",
-            note=f"Sentinel-2 median NDVI for 250m buffer from {start} to {end}.",
-        )
-
-    def _add_ndvi(self, image):
-        return image.addBands(image.normalizedDifference(["B8", "B4"]).rename("NDVI"))
+            return "unknown"
+        if ndvi < 0.25:
+            return "poor"
+        if ndvi < 0.45:
+            return "moderate"
+        return "healthy"

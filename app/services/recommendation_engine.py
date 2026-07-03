@@ -17,6 +17,9 @@ class RecommendationEngine:
         public_context: GovernmentDataContextResponse | None = None,
         satellite_source: str | None = None,
         satellite_note: str | None = None,
+        satellite_ndwi: float | None = None,
+        satellite_water_stress: str | None = None,
+        satellite_vegetation_status: str | None = None,
         public_context_error: str | None = None,
     ) -> CropRecommendationResponse:
         rainfall_mm = self._rainfall_mm(payload, public_context)
@@ -54,6 +57,9 @@ class RecommendationEngine:
                 if farmer.farm.groundwater_depth_m is not None
                 else self._signal_source(public_context, "groundwater"),
                 "ndvi": ndvi,
+                "ndwi": satellite_ndwi,
+                "waterStress": satellite_water_stress,
+                "vegetationStatus": satellite_vegetation_status,
                 "satellite": satellite_source or ("request" if payload.ndvi is not None else None),
                 "satelliteNote": satellite_note,
                 "publicContextMissing": ",".join(public_context.missing_sources) if public_context else None,
