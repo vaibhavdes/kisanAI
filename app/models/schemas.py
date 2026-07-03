@@ -94,7 +94,7 @@ class ProviderConfigUpdate(BaseModel):
 
 
 class FarmProfile(BaseModel):
-    area_acres: float = Field(gt=0)
+    area_acres: float = Field(default=1, gt=0)
     soil_type: str = "unknown"
     soil_ph: float | None = Field(default=None, ge=0, le=14)
     groundwater_depth_m: float | None = Field(default=None, ge=0)
@@ -115,6 +115,25 @@ class FarmerCreate(BaseModel):
 class FarmerResponse(FarmerCreate):
     id: str = Field(default_factory=lambda: f"farmer_{uuid4().hex[:10]}")
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class FarmerIdentifyRequest(BaseModel):
+    phone: str
+    channel: str = "whatsapp"
+    language: str | None = None
+    name: str | None = None
+    village: str | None = None
+    district: str | None = None
+    state: str | None = None
+    pincode: str | None = None
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+
+
+class FarmerIdentifyResponse(BaseModel):
+    farmer: FarmerResponse
+    is_new: bool
+    missing_fields: list[str]
 
 
 class CropRecommendationRequest(BaseModel):

@@ -31,7 +31,7 @@ If a real key was placed in `Details.txt` or `.env.example`, rotate it in Google
 | Gemini SDK | Added via `google-genai` |
 | `test_gemini.py` | Added under `smoke_tests/` |
 | First endpoint | Added: `POST /advisory/test` and `POST /api/v1/advisory/test` |
-| Firestore interface | Smoke test added for named database `kisanai`; Firestore repository implementation is next |
+| Firestore interface | Smoke test added for named database `kisanai`; runtime repository uses Firestore by default |
 | Cloud Storage interface | Smoke test added |
 | Speech-to-Text interface | Smoke test added |
 | Text-to-Speech interface | Smoke test added |
@@ -137,7 +137,7 @@ Build feature-by-feature:
 1. `/advisory/test`
    - Gemini advisory with farmer/weather data.
 2. `/api/v1/farmers`
-   - Implement Firestore repository.
+   - Firestore repository and progressive identity are added.
 3. `/advisory/active-crop`
    - Read farmer, weather context, Gemini advisory, save advisory.
 4. `/vision/crop-health`

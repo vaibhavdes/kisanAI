@@ -5,7 +5,7 @@ from app.models.schemas import (
     ProviderName,
     ProviderRoute,
 )
-from app.repositories.memory_store import store
+from app.repositories.store import store
 
 
 ALLOWED_PROVIDERS: dict[ProviderFeature, set[ProviderName]] = {

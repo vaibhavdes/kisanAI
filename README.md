@@ -4,7 +4,7 @@ Track 4: Smart Water, Crop and Advisory System.
 
 This is a standalone FastAPI prototype for the competition track. It intentionally contains only the pieces required for the Kisan Alert problem statement and avoids product-specific or proprietary application code from any existing system. It shows one complete end-to-end flow:
 
-1. Register a farmer and farm context.
+1. Identify a farmer across WhatsApp, SMS, call or app by phone and progressively capture farm context.
 2. Recommend crops using soil, rainfall, groundwater, NDVI and water availability.
 3. Generate dry-spell irrigation/fertilizer alerts from weather and sensor readings.
 4. Log crop health through text, voice transcript or photo metadata.
@@ -35,7 +35,7 @@ app/
   api/v1/endpoints/      HTTP endpoints by feature
   core/                  settings and app configuration
   models/                request/response schemas and crop domain data
-  repositories/          persistence boundary; Firestore implementation is the next backend slice
+  repositories/          Firestore-backed runtime store plus isolated local test store
   services/              business logic and external integration adapters
   utils/                 language helpers
 tests/                   FastAPI flow tests
@@ -66,7 +66,7 @@ Open:
 
 ## Demo API Flow
 
-Create a farmer:
+Create a farmer when full profile data is available:
 
 ```bash
 curl -X POST http://127.0.0.1:8080/api/v1/farmers \
@@ -142,6 +142,19 @@ curl -X POST http://127.0.0.1:8080/api/v1/whatsapp/webhook \
   }'
 ```
 
+Progressively identify a farmer from any channel:
+
+```bash
+curl -X POST http://127.0.0.1:8080/api/v1/farmers/identify \
+  -H "Content-Type: application/json" \
+  -d '{
+    "phone": "+91 9999999999",
+    "channel": "whatsapp",
+    "language": "hi-IN",
+    "pincode": "522001"
+  }'
+```
+
 Simulate a voice-call IVR callback:
 
 ```bash
@@ -161,7 +174,7 @@ Use the existing service classes as stable boundaries:
 
 - `GeminiService`: switch `diagnose_crop_health` and language response generation to Gemini or Vertex AI.
 - `EarthEngineService`: fetch Sentinel/Landsat farm signals through Earth Engine.
-- `VoiceService`: replace simulated transcript/audio with Cloud Speech-to-Text and Text-to-Speech.
+- `VoiceService`: use Cloud Speech-to-Text/Text-to-Speech and store durable transcript/advisory text.
 - `SmsService`: plug Twilio, Gupshup, or a basic SMS gateway webhook.
 - `WhatsAppService`: plug WhatsApp Business Cloud API webhook verification, templates and media fetch.
 - `CallService`: plug Exotel, Twilio Voice, Knowlarity or another IVR/call provider callback.
@@ -169,7 +182,7 @@ Use the existing service classes as stable boundaries:
 - `GovernmentDataService`: plug data.gov.in, IMD, India-WRIS and Soil Health Card ingestion.
 - `CropStageAdvisoryService`: add crop-stage rules and Gemini synthesis for sowing through harvest.
 - `SoilCardVisionService`: replace text-parser fallback with Gemini/Vertex AI Vision soil-card extraction.
-- `ConversationStore`: replace local repository storage with Firestore and BigQuery export.
+- `ConversationStore`: persist farmer conversation context in Firestore and export anonymized analytics to BigQuery.
 - `AlertPriorityPolicy`: central policy for WhatsApp/SMS/voice-call escalation.
 
 For the competition, this structure keeps each feature independently owned while the backend moves from verified service connectivity to production-style integrations.

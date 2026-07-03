@@ -6,7 +6,7 @@ from app.models.schemas import (
     DrySpellAdvisoryRequest,
     DrySpellAdvisoryResponse,
 )
-from app.repositories.memory_store import store
+from app.repositories.store import store
 from app.services.crop_stage_advisory_service import CropStageAdvisoryService
 from app.services.weather_service import WeatherService
 

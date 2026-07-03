@@ -21,7 +21,9 @@ Purpose:
 
 ## 2. Firestore Persistence
 
-Replace local store with repository interfaces:
+Status: first runtime implementation added.
+
+Firestore stores:
 
 - Farmers
 - Farms
@@ -30,8 +32,16 @@ Replace local store with repository interfaces:
 - Alerts
 - Expert tickets
 - Provider config
+- Cross-channel phone identity
 
 Keep BigQuery for analytics/public data, not transactional farmer records.
+
+Next refinements:
+
+- Add active crop records.
+- Add farm-coordinate update flow.
+- Add soil-card result records.
+- Add alert/advisory history records.
 
 ## 3. Weather Provider
 
@@ -109,7 +119,8 @@ Implement:
 - Google STT primary, Sarvam fallback.
 - Google TTS primary, Sarvam fallback.
 - Language detection/selection.
-- Generated audio URI in Cloud Storage.
+- Durable transcript, response text, detected language and intent.
+- Optional short-retention audio URI only when needed for diagnosis or audit.
 
 ## 9. WhatsApp, SMS, Voice Channels
 

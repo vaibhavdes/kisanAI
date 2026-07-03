@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 
 from app.models.schemas import VoiceIntakeRequest, VoiceIntakeResponse
-from app.repositories.memory_store import store
+from app.repositories.store import store
 from app.services.voice_service import VoiceService
 
 router = APIRouter()
@@ -13,4 +13,3 @@ def voice_intake(payload: VoiceIntakeRequest) -> VoiceIntakeResponse:
     if not farmer:
         raise HTTPException(status_code=404, detail="Farmer not found")
     return VoiceService().handle_intake(farmer, payload)
-

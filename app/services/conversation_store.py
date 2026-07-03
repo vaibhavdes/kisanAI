@@ -1,5 +1,5 @@
 from app.models.schemas import ConversationLogRequest, ConversationLogResponse, ConversationMessage
-from app.repositories.memory_store import store
+from app.repositories.store import store
 
 
 class ConversationStore:
@@ -10,4 +10,3 @@ class ConversationStore:
 
     def recent(self, farmer_id: str, limit: int = 20) -> list[ConversationMessage]:
         return store.list_conversation_messages(farmer_id, limit=limit)
-

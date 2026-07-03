@@ -1,7 +1,11 @@
+import os
+
+os.environ["DATA_STORE_PROVIDER"] = "local"
+
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.repositories.memory_store import store
+from app.repositories.store import store
 
 client = TestClient(app)
 
@@ -124,6 +128,36 @@ def test_low_connectivity_channels_accept_farmer_intent() -> None:
     )
     assert call_response.status_code == 200
     assert call_response.json()["intent"] == "crop_recommendation"
+
+
+def test_progressive_farmer_identity_reuses_phone_across_channels() -> None:
+    first_response = client.post(
+        "/api/v1/farmers/identify",
+        json={"phone": "+91 99999 99999", "channel": "whatsapp", "language": "hi-IN"},
+    )
+    assert first_response.status_code == 200
+    first = first_response.json()
+    assert first["is_new"] is True
+    assert "farm_location" in first["missing_fields"]
+
+    second_response = client.post(
+        "/api/v1/farmers/identify",
+        json={
+            "phone": "9999999999",
+            "channel": "sms",
+            "village": "Demo Village",
+            "district": "Guntur",
+            "state": "Andhra Pradesh",
+            "latitude": 16.3,
+            "longitude": 80.4,
+        },
+    )
+    assert second_response.status_code == 200
+    second = second_response.json()
+    assert second["is_new"] is False
+    assert second["farmer"]["id"] == first["farmer"]["id"]
+    assert second["farmer"]["phone"] == "919999999999"
+    assert "farm_location" not in second["missing_fields"]
 
 
 def test_extension_interfaces_for_data_soil_and_conversation() -> None:

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 
 from app.models.schemas import CropRecommendationRequest, CropRecommendationResponse
-from app.repositories.memory_store import store
+from app.repositories.store import store
 from app.services.earth_engine_service import EarthEngineService
 from app.services.recommendation_engine import RecommendationEngine
 

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 
 from app.models.schemas import DiagnosisRequest, DiagnosisResponse
-from app.repositories.memory_store import store
+from app.repositories.store import store
 from app.services.expert_service import ExpertService
 from app.services.gemini_service import GeminiService
 
@@ -18,4 +18,3 @@ def log_diagnosis(payload: DiagnosisRequest) -> DiagnosisResponse:
     ticket = ExpertService().create_ticket(farmer, payload, diagnosis)
     store.save_ticket(ticket)
     return DiagnosisResponse(**diagnosis.model_dump(), expert_ticket=ticket)
-

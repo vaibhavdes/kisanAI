@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     google_cloud_project: str | None = None
     google_cloud_location: str = "global"
     gcp_region: str = "asia-south1"
+    data_store_provider: str = "firestore"
     firestore_database: str = "(default)"
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-2.5-flash"

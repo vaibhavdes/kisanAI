@@ -25,8 +25,8 @@ flowchart LR
 - Models: `app/models`
   - Shared contracts for API, services, and tests.
 - Repositories: `app/repositories`
-  - Current local implementation is temporary.
-  - Firestore persistence is required before the production-style flow is considered complete.
+  - Runtime storage uses Firestore by default.
+  - Tests use an isolated local store so they do not mutate cloud data.
 - Services: `app/services`
   - Crop recommendation, advisory, diagnosis and channel logic.
   - External Google Cloud integrations should stay behind these classes.
@@ -42,6 +42,8 @@ flowchart LR
   - Fetch satellite NDVI/time-series by farm point or polygon.
 - Speech-to-Text and Text-to-Speech: `VoiceService`
   - Use Cloud Speech APIs first, with Sarvam as configured fallback.
+  - Store transcript, response text, language, intent and source metadata durably.
+  - Store raw voice/audio media only when needed for diagnosis/audit, with explicit retention rules.
 - WhatsApp Business: `WhatsAppService`
   - Add webhook verification, message templates, media download and delivery receipts.
 - Voice-call IVR: `CallService`
@@ -73,3 +75,15 @@ Store farmer-facing text in the farmer language, but keep analytics fields canon
 - Location: store raw user value and normalized state/district when available.
 - Advisory: store generated user-language response plus canonical intent.
 - Tickets: store canonical issue/severity so expert dashboards remain searchable.
+
+## Farmer Experience
+
+Do not force a long onboarding form. The farmer can start from WhatsApp, SMS, call, or app:
+
+1. Normalize phone number and reuse the same farmer profile across channels.
+2. Detect language from text/voice when possible; ask only if unknown.
+3. Capture location from WhatsApp shared location, GPS, pincode, or spoken village/pincode.
+4. Ask for crop, soil, sowing date, and farm coordinates only when the current question needs them.
+5. Store each answer once and reuse it for future advisories.
+
+Durable farmer memory is text-first. Audio is not the primary record because transcripts and normalized metadata are cheaper, searchable, and easier to use in AI context.
