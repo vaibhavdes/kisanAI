@@ -38,10 +38,29 @@ app/
   repositories/          Firestore-backed runtime store plus isolated local test store
   services/              business logic and external integration adapters
   utils/                 language helpers
+flutter_chat_app/         Flutter WhatsApp-like farmer chat prototype
+scripts/                  Utility scripts such as BigQuery CSV ingestion
 tests/                   FastAPI flow tests
 ```
 
-## Run Locally
+## Architecture Visualization
+
+```mermaid
+flowchart LR
+  Farmer["Farmer\nWhatsApp / SMS / Voice / Flutter"] --> Channels["Channel adapters"]
+  Channels --> Dialogflow["Dialogflow CX\noptional slot filling"]
+  Channels --> Backend["FastAPI backend"]
+  Dialogflow --> Backend
+  Backend --> Store["Firestore / local store\nfarmer + conversation context"]
+  Backend --> AI["Vertex AI / Gemini\nadvisory + vision"]
+  Backend --> Weather["IMD / Open-Meteo\nweather context"]
+  Backend --> BigQuery["BigQuery curated public data\nrainfall + soil + groundwater + agromet"]
+  Backend --> EarthEngine["Earth Engine\nNDVI / NDWI"]
+  Backend --> Delivery["Authkey / Twilio\nWhatsApp + SMS + voice"]
+  Admin["Admin UI /admin"] --> Backend
+```
+
+## Run Backend Locally
 
 ```bash
 cd kisan-alert-hackathon
@@ -54,16 +73,56 @@ uvicorn app.main:app --reload --port 8080
 Open:
 
 - API docs: http://127.0.0.1:8080/docs
+- Admin service switch UI: http://127.0.0.1:8080/admin
 - Health: http://127.0.0.1:8080/health
-- API channels:
-  - `/api/v1/sms/webhook`
-  - `/api/v1/whatsapp/webhook`
-  - `/api/v1/calls/webhook`
-  - `/api/v1/weather/context`
-  - `/api/v1/advisories/crop-stage`
-  - `/api/v1/soil-cards/extract`
-  - `/api/v1/data/sources`
-  - `/api/v1/conversations/log`
+
+## Run Flutter Chat App
+
+Install Flutter SDK first. Then start the backend and run:
+
+```bash
+cd flutter_chat_app
+flutter pub get
+flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8080
+```
+
+For Chrome/web testing:
+
+```bash
+flutter run -d chrome --dart-define=API_BASE_URL=http://127.0.0.1:8080
+```
+
+The Flutter app currently supports phone/language onboarding, WhatsApp-like chat, text messages, location demo payload, crop-photo demo payload and voice-note demo payload through `/api/v1/whatsapp/webhook`.
+
+## API Functionality
+
+| API | Functionality |
+|---|---|
+| `GET /health` | Boolean health status for database, AI, weather, speech, translation and channel services. |
+| `GET /admin` | Browser admin UI for service health and provider route switching. |
+| `GET/PATCH /api/v1/providers/config` | Read/update primary/fallback providers for weather, STT, TTS, translation, LLM, vision, satellite, maps, WhatsApp and SMS/voice. |
+| `POST /api/v1/farmers` | Create a farmer with complete profile. |
+| `POST /api/v1/farmers/identify` | Identify or progressively create farmer from phone/channel/location. |
+| `POST /api/v1/recommendations/crop` | Recommend crops using farmer profile, rainfall, soil, groundwater and optional NDVI. |
+| `POST /api/v1/weather/context` | Fetch weather context through configured weather provider route. |
+| `POST /api/v1/advisories/dry-spell` | Generate dry-spell irrigation/fertilizer advisory. |
+| `POST /api/v1/advisories/crop-stage` | Generate crop-stage advisory for sowing through harvest. |
+| `POST /api/v1/alerts/run-daily` | Run proactive daily alert generation and delivery for selected/all farmers. |
+| `POST /api/v1/alerts/deliver` | Deliver an alert plan through WhatsApp, SMS and/or voice call. |
+| `POST /api/v1/diagnosis/log` | Log crop symptoms/photo metadata and create expert ticket. |
+| `POST /api/v1/soil-cards/extract` | Extract soil card values with vision provider pipeline. |
+| `POST /api/v1/voice/transcribe` | Convert voice audio payload to text. |
+| `POST /api/v1/voice/speak` | Convert text reply to voice audio. |
+| `POST /api/v1/translate/text` | Translate text through configured translation route. |
+| `POST /api/v1/sms/webhook` | SMS-style farmer intake. |
+| `POST /api/v1/whatsapp/webhook` | WhatsApp-style text/location/media/voice intake. |
+| `POST /api/v1/calls/webhook` | Voice-call/IVR style intake. |
+| `POST /api/v1/dialogflow/webhook` | Dialogflow CX fulfillment webhook for structured multi-turn flows. |
+| `GET /api/v1/data/sources` | List useful government/public data sources. |
+| `POST /api/v1/data/context` | Query BigQuery public-data context for rainfall, groundwater, soil, crop history and agromet. |
+| `POST /api/v1/conversations/log` | Store a farmer/assistant/expert conversation turn. |
+| `GET /api/v1/conversations/{farmer_id}` | Read recent conversation context. |
+| `GET /api/v1/expert/tickets/{farmer_id}` | List expert follow-up tickets. |
 
 ## Demo API Flow
 
