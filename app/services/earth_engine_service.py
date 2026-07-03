@@ -43,6 +43,9 @@ class EarthEngineService:
         summary = self._mean_indices(ee, collection.median(), geometry)
         ndvi = self._rounded(summary.get("NDVI"))
         ndwi = self._rounded(summary.get("NDWI"))
+        ndmi = self._rounded(summary.get("NDMI"))
+        evi = self._rounded(summary.get("EVI"))
+        ndre = self._rounded(summary.get("NDRE"))
 
         return SatelliteSignalResponse(
             farmer_id=farmer_id,
@@ -55,11 +58,16 @@ class EarthEngineService:
             source="earth_engine_sentinel_2",
             ndvi=ndvi,
             ndwi=ndwi,
-            water_stress=self._water_stress(ndvi, ndwi),
+            ndmi=ndmi,
+            evi=evi,
+            ndre=ndre,
+            water_stress=self._water_stress(ndvi, ndwi, ndmi),
             vegetation_status=self._vegetation_status(ndvi),
+            moisture_status=self._moisture_status(ndmi),
+            chlorophyll_status=self._chlorophyll_status(ndre),
             history=self._history(ee, geometry, start, end, history_periods),
             note=(
-                f"Sentinel-2 median NDVI/NDWI for {geometry_type} "
+                f"Sentinel-2 median NDVI/NDWI/NDMI/EVI/NDRE for {geometry_type} "
                 f"from {start.isoformat()} to {end.isoformat()}."
             ),
         )
@@ -86,13 +94,23 @@ class EarthEngineService:
             .filterDate(start, end)
             .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 35))
             .map(self._add_indices)
-            .select(["NDVI", "NDWI"])
+            .select(["NDVI", "NDWI", "NDMI", "EVI", "NDRE"])
         )
 
     def _add_indices(self, image):
         ndvi = image.normalizedDifference(["B8", "B4"]).rename("NDVI")
         ndwi = image.normalizedDifference(["B3", "B8"]).rename("NDWI")
-        return image.addBands([ndvi, ndwi])
+        ndmi = image.normalizedDifference(["B8", "B11"]).rename("NDMI")
+        ndre = image.normalizedDifference(["B8", "B5"]).rename("NDRE")
+        evi = image.expression(
+            "2.5 * ((nir - red) / (nir + 6 * red - 7.5 * blue + 1))",
+            {
+                "nir": image.select("B8").divide(10000),
+                "red": image.select("B4").divide(10000),
+                "blue": image.select("B2").divide(10000),
+            },
+        ).rename("EVI")
+        return image.addBands([ndvi, ndwi, ndmi, evi, ndre])
 
     def _mean_indices(self, ee, image, geometry) -> dict:
         values = image.reduceRegion(
@@ -122,13 +140,19 @@ class EarthEngineService:
             values = self._mean_indices(ee, collection.median(), geometry)
             ndvi = self._rounded(values.get("NDVI"))
             ndwi = self._rounded(values.get("NDWI"))
+            ndmi = self._rounded(values.get("NDMI"))
+            evi = self._rounded(values.get("EVI"))
+            ndre = self._rounded(values.get("NDRE"))
             points.append(
                 SatelliteHistoryPoint(
                     start_date=cursor.isoformat(),
                     end_date=period_end.isoformat(),
                     ndvi=ndvi,
                     ndwi=ndwi,
-                    water_stress=self._water_stress(ndvi, ndwi),
+                    ndmi=ndmi,
+                    evi=evi,
+                    ndre=ndre,
+                    water_stress=self._water_stress(ndvi, ndwi, ndmi),
                 )
             )
             cursor = period_end
@@ -140,11 +164,15 @@ class EarthEngineService:
             return None
         return round(float(value), 3)
 
-    def _water_stress(self, ndvi: float | None, ndwi: float | None) -> str:
-        if ndvi is None and ndwi is None:
+    def _water_stress(self, ndvi: float | None, ndwi: float | None, ndmi: float | None = None) -> str:
+        if ndvi is None and ndwi is None and ndmi is None:
             return "unknown"
+        if ndmi is not None and ndmi < -0.1:
+            return "high"
         if ndwi is not None and ndwi < -0.15:
             return "high"
+        if ndmi is not None and ndmi < 0.1:
+            return "medium"
         if ndwi is not None and ndwi < 0:
             return "medium"
         if ndvi is not None and ndvi < 0.25:
@@ -159,3 +187,23 @@ class EarthEngineService:
         if ndvi < 0.45:
             return "moderate"
         return "healthy"
+
+    def _moisture_status(self, ndmi: float | None) -> str:
+        if ndmi is None:
+            return "unknown"
+        if ndmi < -0.1:
+            return "very_dry"
+        if ndmi < 0.1:
+            return "dry"
+        if ndmi < 0.3:
+            return "adequate"
+        return "moist"
+
+    def _chlorophyll_status(self, ndre: float | None) -> str:
+        if ndre is None:
+            return "unknown"
+        if ndre < 0.18:
+            return "low"
+        if ndre < 0.32:
+            return "medium"
+        return "good"

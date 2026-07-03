@@ -21,8 +21,13 @@ def recommend_crop(payload: CropRecommendationRequest) -> CropRecommendationResp
     satellite_source = "request" if payload.ndvi is not None else None
     satellite_note = None
     satellite_ndwi = None
+    satellite_ndmi = None
+    satellite_evi = None
+    satellite_ndre = None
     satellite_water_stress = None
     satellite_vegetation_status = None
+    satellite_moisture_status = None
+    satellite_chlorophyll_status = None
     if ndvi is None and farmer.farm.latitude is not None and farmer.farm.longitude is not None:
         try:
             signal = EarthEngineService().get_farm_signal(
@@ -33,8 +38,13 @@ def recommend_crop(payload: CropRecommendationRequest) -> CropRecommendationResp
             )
             ndvi = signal.ndvi
             satellite_ndwi = signal.ndwi
+            satellite_ndmi = signal.ndmi
+            satellite_evi = signal.evi
+            satellite_ndre = signal.ndre
             satellite_water_stress = signal.water_stress
             satellite_vegetation_status = signal.vegetation_status
+            satellite_moisture_status = signal.moisture_status
+            satellite_chlorophyll_status = signal.chlorophyll_status
             satellite_source = signal.source
             satellite_note = signal.note
         except Exception as exc:
@@ -64,8 +74,13 @@ def recommend_crop(payload: CropRecommendationRequest) -> CropRecommendationResp
             satellite_source=satellite_source,
             satellite_note=satellite_note,
             satellite_ndwi=satellite_ndwi,
+            satellite_ndmi=satellite_ndmi,
+            satellite_evi=satellite_evi,
+            satellite_ndre=satellite_ndre,
             satellite_water_stress=satellite_water_stress,
             satellite_vegetation_status=satellite_vegetation_status,
+            satellite_moisture_status=satellite_moisture_status,
+            satellite_chlorophyll_status=satellite_chlorophyll_status,
             public_context_error=public_context_error,
         )
     except ValueError as exc:

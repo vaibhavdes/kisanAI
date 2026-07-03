@@ -112,7 +112,7 @@ The React Native app supports phone/language onboarding, WhatsApp-like chat, tex
 | `POST /api/v1/farmers` | Create a farmer with complete profile. |
 | `POST /api/v1/farmers/identify` | Identify or progressively create farmer from phone/channel/location. |
 | `POST /api/v1/recommendations/crop` | Recommend crops using farmer profile, rainfall, soil, groundwater and optional NDVI. |
-| `POST /api/v1/satellite/farm-signal` | Fetch Earth Engine NDVI/NDWI, vegetation status and water-stress signal for farmer coordinates or farm polygon. |
+| `POST /api/v1/satellite/farm-signal` | Fetch Earth Engine NDVI, NDWI, NDMI, EVI, NDRE, vegetation status and water-stress signal for farmer coordinates or farm polygon. |
 | `POST /api/v1/weather/context` | Fetch weather context through configured weather provider route. |
 | `POST /api/v1/advisories/dry-spell` | Generate dry-spell irrigation/fertilizer advisory. |
 | `POST /api/v1/advisories/crop-stage` | Generate crop-stage advisory for sowing through harvest. |

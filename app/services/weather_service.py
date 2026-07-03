@@ -8,6 +8,7 @@ from app.models.schemas import (
     WeatherContextRequest,
 )
 from app.services.alert_priority_policy import AlertPriorityPolicy
+from app.services.earth_engine_service import EarthEngineService
 from app.services.gemini_service import AdvisoryProviderUnavailable, GeminiService
 from app.services.weather_context_service import WeatherContextService
 from app.utils.language import phrase
@@ -37,6 +38,7 @@ class WeatherService:
         dry_days = sum(1 for rain in rainfall_forecast[:7] if rain < 2)
         moisture = payload.soil_moisture
         temp = temperature_c
+        satellite_signal = self._satellite_signal(farmer)
 
         if dry_days >= 6 or (moisture is not None and moisture < 0.14):
             risk = RiskLevel.critical
@@ -50,6 +52,13 @@ class WeatherService:
         else:
             risk = RiskLevel.low
             irrigation_mm = 0
+
+        if satellite_signal and satellite_signal.water_stress == "high" and risk == RiskLevel.low:
+            risk = RiskLevel.medium
+            irrigation_mm = max(irrigation_mm, 10)
+        elif satellite_signal and satellite_signal.water_stress == "high" and risk == RiskLevel.medium:
+            risk = RiskLevel.high
+            irrigation_mm = max(irrigation_mm, 18)
 
         if irrigation_mm:
             advisory = phrase(
@@ -67,6 +76,8 @@ class WeatherService:
             if risk in {RiskLevel.high, RiskLevel.critical}
             else "Fertilizer application can continue if soil is moist."
         )
+        if satellite_signal and satellite_signal.chlorophyll_status == "low":
+            fertilizer_note += " Satellite chlorophyll signal is low; ask an expert before nitrogen correction."
         ai_source = None
         ai_model = None
         if settings.enable_google_integrations:
@@ -80,7 +91,8 @@ class WeatherService:
                         location=f"{farmer.village}, {farmer.district}, {farmer.state}",
                         weather_summary=(
                             f"{dry_days} dry days in 7-day forecast. "
-                            f"Risk {risk.value}. Temperature {temperature_c} C."
+                            f"Risk {risk.value}. Temperature {temperature_c} C. "
+                            f"Satellite water stress {satellite_signal.water_stress if satellite_signal else 'unknown'}."
                         ),
                         rainfall_forecast_mm=sum(rainfall_forecast[:7]),
                         soil_moisture=moisture,
@@ -108,6 +120,23 @@ class WeatherService:
             alert_channels=alert_plan.channels,
             weather_source=weather_source,
             weather_fallback_used=weather_fallback_used,
+            satellite_source=satellite_signal.source if satellite_signal else None,
+            satellite_water_stress=satellite_signal.water_stress if satellite_signal else None,
+            satellite_ndwi=satellite_signal.ndwi if satellite_signal else None,
+            satellite_ndmi=satellite_signal.ndmi if satellite_signal else None,
             ai_source=ai_source,
             ai_model=ai_model,
         )
+
+    def _satellite_signal(self, farmer: FarmerResponse):
+        if farmer.farm.latitude is None or farmer.farm.longitude is None:
+            return None
+        try:
+            return EarthEngineService().get_farm_signal(
+                farmer_id=farmer.id,
+                latitude=farmer.farm.latitude,
+                longitude=farmer.farm.longitude,
+                history_periods=1,
+            )
+        except Exception:
+            return None

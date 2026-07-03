@@ -708,6 +708,53 @@ def test_dry_spell_fetches_weather_when_forecast_missing(monkeypatch) -> None:
     assert body["risk_level"] in {"high", "critical"}
 
 
+def test_dry_spell_uses_satellite_water_stress(monkeypatch) -> None:
+    farmer_id = create_demo_farmer()
+
+    def fake_signal(self, **kwargs):
+        return SatelliteSignalResponse(
+            farmer_id=kwargs["farmer_id"],
+            latitude=kwargs["latitude"],
+            longitude=kwargs["longitude"],
+            geometry_type="point_buffer",
+            buffer_m=250,
+            start_date="2026-04-05",
+            end_date="2026-07-04",
+            source="earth_engine_sentinel_2",
+            ndvi=0.31,
+            ndwi=-0.2,
+            ndmi=-0.12,
+            evi=0.28,
+            ndre=0.16,
+            water_stress="high",
+            vegetation_status="moderate",
+            moisture_status="very_dry",
+            chlorophyll_status="low",
+            note="Sentinel-2 farm signal.",
+        )
+
+    monkeypatch.setattr("app.services.earth_engine_service.EarthEngineService.get_farm_signal", fake_signal)
+
+    response = client.post(
+        "/api/v1/advisories/dry-spell",
+        json={
+            "farmer_id": farmer_id,
+            "crop": "maize",
+            "rainfall_forecast_mm": [3, 3, 3, 3, 3, 3, 3],
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["risk_level"] == "medium"
+    assert body["irrigation_mm"] == 10
+    assert body["satellite_source"] == "earth_engine_sentinel_2"
+    assert body["satellite_water_stress"] == "high"
+    assert body["satellite_ndwi"] == -0.2
+    assert body["satellite_ndmi"] == -0.12
+    assert "chlorophyll signal is low" in body["fertilizer_note"]
+
+
 def test_extension_interfaces_for_data_soil_and_conversation(monkeypatch) -> None:
     farmer_id = create_demo_farmer()
 
@@ -1159,6 +1206,53 @@ def test_farmer_advisories_include_ai_source_when_google_enabled(monkeypatch) ->
     assert stage_response.json()["actions"] == ["Irrigate in the evening.", "Check soil moisture first."]
 
 
+def test_crop_stage_advisory_uses_satellite_water_and_chlorophyll_status(monkeypatch) -> None:
+    farmer_id = create_demo_farmer()
+
+    def fake_signal(self, **kwargs):
+        return SatelliteSignalResponse(
+            farmer_id=kwargs["farmer_id"],
+            latitude=kwargs["latitude"],
+            longitude=kwargs["longitude"],
+            geometry_type="point_buffer",
+            buffer_m=250,
+            start_date="2026-04-05",
+            end_date="2026-07-04",
+            source="earth_engine_sentinel_2",
+            ndvi=0.34,
+            ndwi=-0.22,
+            ndmi=-0.14,
+            evi=0.29,
+            ndre=0.15,
+            water_stress="high",
+            vegetation_status="moderate",
+            moisture_status="very_dry",
+            chlorophyll_status="low",
+            note="Sentinel-2 farm signal.",
+        )
+
+    monkeypatch.setattr("app.services.earth_engine_service.EarthEngineService.get_farm_signal", fake_signal)
+
+    response = client.post(
+        "/api/v1/advisories/crop-stage",
+        json={
+            "farmer_id": farmer_id,
+            "crop": "maize",
+            "stage": "flowering",
+            "rainfall_forecast_mm": [3, 3, 3, 3, 3, 3, 3],
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["risk_level"] == "high"
+    assert body["data_used"]["satelliteWaterStress"] == "high"
+    assert body["data_used"]["satelliteNdmi"] == -0.14
+    assert body["data_used"]["satelliteChlorophyllStatus"] == "low"
+    assert any("Satellite moisture signal" in action for action in body["actions"])
+    assert any("Satellite chlorophyll signal" in action for action in body["actions"])
+
+
 def test_crop_recommendation_uses_public_context_when_rainfall_is_missing(monkeypatch) -> None:
     farmer_response = client.post(
         "/api/v1/farmers",
@@ -1246,14 +1340,22 @@ def test_satellite_farm_signal_accepts_farmer_profile_and_polygon(monkeypatch) -
             source="earth_engine_sentinel_2",
             ndvi=0.52,
             ndwi=-0.04,
+            ndmi=0.08,
+            evi=0.46,
+            ndre=0.35,
             water_stress="medium",
             vegetation_status="healthy",
+            moisture_status="dry",
+            chlorophyll_status="good",
             history=[
                 SatelliteHistoryPoint(
                     start_date="2026-04-05",
                     end_date="2026-05-05",
                     ndvi=0.42,
                     ndwi=-0.1,
+                    ndmi=0.04,
+                    evi=0.36,
+                    ndre=0.28,
                     water_stress="medium",
                 )
             ],
@@ -1280,8 +1382,14 @@ def test_satellite_farm_signal_accepts_farmer_profile_and_polygon(monkeypatch) -
     assert body["geometry_type"] == "polygon"
     assert body["ndvi"] == 0.52
     assert body["ndwi"] == -0.04
+    assert body["ndmi"] == 0.08
+    assert body["evi"] == 0.46
+    assert body["ndre"] == 0.35
     assert body["water_stress"] == "medium"
+    assert body["moisture_status"] == "dry"
+    assert body["chlorophyll_status"] == "good"
     assert body["history"][0]["ndvi"] == 0.42
+    assert body["history"][0]["ndmi"] == 0.04
 
 
 def test_crop_recommendation_uses_earth_engine_farm_signal(monkeypatch) -> None:
@@ -1300,8 +1408,13 @@ def test_crop_recommendation_uses_earth_engine_farm_signal(monkeypatch) -> None:
             source="earth_engine_sentinel_2",
             ndvi=0.36,
             ndwi=-0.18,
+            ndmi=-0.11,
+            evi=0.3,
+            ndre=0.21,
             water_stress="high",
             vegetation_status="moderate",
+            moisture_status="very_dry",
+            chlorophyll_status="medium",
             note="Sentinel-2 farm signal.",
         )
 
@@ -1321,8 +1434,13 @@ def test_crop_recommendation_uses_earth_engine_farm_signal(monkeypatch) -> None:
     data_sources = response.json()["data_sources"]
     assert data_sources["ndvi"] == 0.36
     assert data_sources["ndwi"] == -0.18
+    assert data_sources["ndmi"] == -0.11
+    assert data_sources["evi"] == 0.3
+    assert data_sources["ndre"] == 0.21
     assert data_sources["waterStress"] == "high"
     assert data_sources["vegetationStatus"] == "moderate"
+    assert data_sources["moistureStatus"] == "very_dry"
+    assert data_sources["chlorophyllStatus"] == "medium"
     assert data_sources["satellite"] == "earth_engine_sentinel_2"
 
 

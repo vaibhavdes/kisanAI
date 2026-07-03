@@ -186,6 +186,9 @@ class SatelliteHistoryPoint(BaseModel):
     end_date: str
     ndvi: float | None = None
     ndwi: float | None = None
+    ndmi: float | None = None
+    evi: float | None = None
+    ndre: float | None = None
     water_stress: str | None = None
 
 
@@ -200,8 +203,13 @@ class SatelliteSignalResponse(BaseModel):
     source: str
     ndvi: float | None = None
     ndwi: float | None = None
+    ndmi: float | None = None
+    evi: float | None = None
+    ndre: float | None = None
     water_stress: str
     vegetation_status: str
+    moisture_status: str
+    chlorophyll_status: str
     history: list[SatelliteHistoryPoint] = Field(default_factory=list)
     note: str
 
@@ -226,6 +234,10 @@ class DrySpellAdvisoryResponse(BaseModel):
     alert_channels: list[str]
     weather_source: str | None = None
     weather_fallback_used: bool = False
+    satellite_source: str | None = None
+    satellite_water_stress: str | None = None
+    satellite_ndwi: float | None = None
+    satellite_ndmi: float | None = None
     ai_source: str | None = None
     ai_model: str | None = None
 

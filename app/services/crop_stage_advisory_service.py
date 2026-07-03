@@ -8,6 +8,7 @@ from app.models.schemas import (
     RiskLevel,
 )
 from app.services.alert_priority_policy import AlertPriorityPolicy
+from app.services.earth_engine_service import EarthEngineService
 from app.services.gemini_service import AdvisoryProviderUnavailable, GeminiService
 
 
@@ -18,8 +19,9 @@ class CropStageAdvisoryService:
         payload: CropStageAdvisoryRequest,
     ) -> CropStageAdvisoryResponse:
         dry_days = sum(1 for rain in payload.rainfall_forecast_mm[:7] if rain < 2)
-        risk = self._risk_for_stage(payload, dry_days)
-        actions = self._actions_for_stage(payload, dry_days, risk)
+        satellite_signal = self._satellite_signal(farmer)
+        risk = self._risk_for_stage(payload, dry_days, satellite_signal.water_stress if satellite_signal else None)
+        actions = self._actions_for_stage(payload, dry_days, risk, satellite_signal)
         advice = f"{payload.crop} is in {payload.stage.value} stage. " + " ".join(actions[:2])
         ai_source = None
         ai_model = None
@@ -34,7 +36,8 @@ class CropStageAdvisoryService:
                         location=f"{farmer.village}, {farmer.district}, {farmer.state}",
                         weather_summary=(
                             f"{dry_days} dry days forecast. Wind {payload.wind_speed_kmph} kmph. "
-                            f"Humidity {payload.humidity_percent}%. Risk {risk.value}."
+                            f"Humidity {payload.humidity_percent}%. Risk {risk.value}. "
+                            f"Satellite water stress {satellite_signal.water_stress if satellite_signal else 'unknown'}."
                         ),
                         rainfall_forecast_mm=sum(payload.rainfall_forecast_mm[:7]),
                         soil_moisture=payload.soil_moisture,
@@ -66,14 +69,32 @@ class CropStageAdvisoryService:
                 "humidityPercent": payload.humidity_percent,
                 "soilMoisture": payload.soil_moisture,
                 "diseaseRisk": payload.disease_risk.value if payload.disease_risk else None,
+                "satelliteSource": satellite_signal.source if satellite_signal else None,
+                "satelliteNdvi": satellite_signal.ndvi if satellite_signal else None,
+                "satelliteNdwi": satellite_signal.ndwi if satellite_signal else None,
+                "satelliteNdmi": satellite_signal.ndmi if satellite_signal else None,
+                "satelliteWaterStress": satellite_signal.water_stress if satellite_signal else None,
+                "satelliteVegetationStatus": satellite_signal.vegetation_status if satellite_signal else None,
+                "satelliteChlorophyllStatus": satellite_signal.chlorophyll_status if satellite_signal else None,
             },
             ai_source=ai_source,
             ai_model=ai_model,
         )
 
-    def _risk_for_stage(self, payload: CropStageAdvisoryRequest, dry_days: int) -> RiskLevel:
+    def _risk_for_stage(
+        self,
+        payload: CropStageAdvisoryRequest,
+        dry_days: int,
+        satellite_water_stress: str | None,
+    ) -> RiskLevel:
         if payload.disease_risk in {RiskLevel.high, RiskLevel.critical}:
             return payload.disease_risk
+        if satellite_water_stress == "high" and payload.stage in {
+            CropStage.germination,
+            CropStage.flowering,
+            CropStage.vegetative,
+        }:
+            return RiskLevel.high
         if payload.stage == CropStage.flowering and dry_days >= 4:
             return RiskLevel.high
         if payload.stage == CropStage.germination and payload.soil_moisture is not None:
@@ -92,6 +113,7 @@ class CropStageAdvisoryService:
         payload: CropStageAdvisoryRequest,
         dry_days: int,
         risk: RiskLevel,
+        satellite_signal=None,
     ) -> list[str]:
         actions_by_stage = {
             CropStage.sowing: [
@@ -122,8 +144,25 @@ class CropStageAdvisoryService:
         actions = list(actions_by_stage[payload.stage])
         if dry_days >= 4:
             actions.append("Dry-spell risk is high; prioritize irrigation check.")
+        if satellite_signal and satellite_signal.water_stress == "high":
+            actions.append("Satellite moisture signal shows high water stress; inspect field before fertilizer.")
+        if satellite_signal and satellite_signal.chlorophyll_status == "low":
+            actions.append("Satellite chlorophyll signal is low; validate nutrient deficiency with expert support.")
         if payload.humidity_percent is not None and payload.humidity_percent > 85:
             actions.append("High humidity increases disease risk; scout crop closely.")
         if risk in {RiskLevel.high, RiskLevel.critical}:
             actions.append("Escalate to expert if symptoms are visible.")
         return actions
+
+    def _satellite_signal(self, farmer: FarmerResponse):
+        if farmer.farm.latitude is None or farmer.farm.longitude is None:
+            return None
+        try:
+            return EarthEngineService().get_farm_signal(
+                farmer_id=farmer.id,
+                latitude=farmer.farm.latitude,
+                longitude=farmer.farm.longitude,
+                history_periods=1,
+            )
+        except Exception:
+            return None
