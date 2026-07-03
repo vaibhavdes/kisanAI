@@ -412,12 +412,26 @@ class ExpertTicket(BaseModel):
     id: str = Field(default_factory=lambda: f"RSK-{uuid4().hex[:8].upper()}")
     farmer_id: str
     farmer_name: str
+    farmer_phone: str | None = None
+    district: str | None = None
     crop: str
     issue: str
     severity: RiskLevel
     assigned_center: str
+    assigned_expert: str | None = None
+    expert_notes: list[str] = Field(default_factory=list)
+    farmer_notification: str | None = None
     status: str = "open"
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class ExpertTicketUpdateRequest(BaseModel):
+    status: str | None = None
+    assigned_expert: str | None = None
+    expert_note: str | None = None
+    notify_farmer: bool = True
+    farmer_message: str | None = None
 
 
 class DiagnosisResponse(DiagnosisResult):

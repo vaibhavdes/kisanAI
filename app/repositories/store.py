@@ -33,6 +33,8 @@ class AppStore(Protocol):
 
     def save_ticket(self, ticket: ExpertTicket) -> ExpertTicket: ...
 
+    def get_ticket(self, ticket_id: str) -> ExpertTicket | None: ...
+
     def list_tickets(self, farmer_id: str) -> list[ExpertTicket]: ...
 
     def save_conversation_message(self, message: ConversationMessage) -> ConversationMessage: ...
@@ -100,8 +102,12 @@ class LocalStore:
         return list(self.farmers.values())[:limit]
 
     def save_ticket(self, ticket: ExpertTicket) -> ExpertTicket:
+        self.tickets = [existing for existing in self.tickets if existing.id != ticket.id]
         self.tickets.append(ticket)
         return ticket
+
+    def get_ticket(self, ticket_id: str) -> ExpertTicket | None:
+        return next((ticket for ticket in self.tickets if ticket.id == ticket_id), None)
 
     def list_tickets(self, farmer_id: str) -> list[ExpertTicket]:
         return [ticket for ticket in self.tickets if ticket.farmer_id == farmer_id]
@@ -237,6 +243,10 @@ class FirestoreStore:
     def save_ticket(self, ticket: ExpertTicket) -> ExpertTicket:
         self.client.collection("expert_tickets").document(ticket.id).set(ticket.model_dump(mode="json"))
         return ticket
+
+    def get_ticket(self, ticket_id: str) -> ExpertTicket | None:
+        doc = self.client.collection("expert_tickets").document(ticket_id).get()
+        return ExpertTicket(**doc.to_dict()) if doc.exists else None
 
     def list_tickets(self, farmer_id: str) -> list[ExpertTicket]:
         docs = (

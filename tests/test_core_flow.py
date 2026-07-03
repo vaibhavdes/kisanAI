@@ -875,6 +875,52 @@ def test_crop_photo_diagnosis_uses_vision_and_creates_expert_ticket(monkeypatch)
     assert body["source"] == "vertex_ai_vision"
     assert body["likely_issue"] == "Possible leaf blight"
     assert body["expert_ticket"]["issue"] == "Possible leaf blight"
+    assert body["expert_ticket"]["assigned_center"] == "Guntur RSK Demo Center"
+
+
+def test_expert_ticket_update_logs_farmer_notification(monkeypatch) -> None:
+    farmer_id = create_demo_farmer()
+    diagnosis_response = client.post(
+        "/api/v1/diagnosis/log",
+        json={
+            "farmer_id": farmer_id,
+            "crop": "chilli",
+            "symptoms_text": "leaf spots and wilting",
+        },
+    )
+    assert diagnosis_response.status_code == 200
+    ticket_id = diagnosis_response.json()["expert_ticket"]["id"]
+
+    detail_response = client.get(f"/api/v1/expert/ticket/{ticket_id}")
+    assert detail_response.status_code == 200
+    assert detail_response.json()["farmer_phone"] == "919999999999"
+
+    update_response = client.patch(
+        f"/api/v1/expert/ticket/{ticket_id}",
+        json={
+            "status": "in_progress",
+            "assigned_expert": "Dr. Rao",
+            "expert_note": "Share one close leaf photo before spraying.",
+        },
+    )
+
+    assert update_response.status_code == 200
+    body = update_response.json()
+    assert body["status"] == "in_progress"
+    assert body["assigned_expert"] == "Dr. Rao"
+    assert body["expert_notes"] == ["Share one close leaf photo before spraying."]
+    assert "Your expert ticket" in body["farmer_notification"]
+
+    tickets_response = client.get(f"/api/v1/expert/tickets/{farmer_id}")
+    assert tickets_response.status_code == 200
+    assert tickets_response.json()[0]["status"] == "in_progress"
+
+    recent_response = client.get(f"/api/v1/conversations/{farmer_id}")
+    assert recent_response.status_code == 200
+    recent = recent_response.json()
+    assert recent[-1]["role"] == "expert"
+    assert recent[-1]["intent"] == "expert_ticket_update"
+    assert recent[-1]["metadata"]["ticket_id"] == ticket_id
 
 
 def test_soil_card_image_extraction_uses_vision(monkeypatch) -> None:

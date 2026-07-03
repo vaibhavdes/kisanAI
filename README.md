@@ -132,6 +132,7 @@ The React Native app supports phone/language onboarding, WhatsApp-like chat, tex
 | `POST /api/v1/conversations/log` | Store a farmer/assistant/expert conversation turn. |
 | `GET /api/v1/conversations/{farmer_id}` | Read recent conversation context. |
 | `GET /api/v1/expert/tickets/{farmer_id}` | List expert follow-up tickets. |
+| `GET/PATCH /api/v1/expert/ticket/{ticket_id}` | Read/update expert ticket status, assignment, notes and farmer notification. |
 
 ## Demo API Flow
 
