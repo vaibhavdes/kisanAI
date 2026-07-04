@@ -20,6 +20,7 @@ from app.api.v1.endpoints import (
     sms,
     soil_cards,
     translate,
+    twilio,
     voice,
     weather,
     whatsapp,
@@ -47,4 +48,5 @@ api_router.include_router(weather.router, prefix="/api/v1/weather", tags=["weath
 api_router.include_router(sms.router, prefix="/api/v1/sms", tags=["sms"])
 api_router.include_router(whatsapp.router, prefix="/api/v1/whatsapp", tags=["whatsapp"])
 api_router.include_router(calls.router, prefix="/api/v1/calls", tags=["calls"])
+api_router.include_router(twilio.router, prefix="/api/v1/twilio", tags=["twilio"])
 api_router.include_router(expert.router, prefix="/api/v1/expert", tags=["expert"])

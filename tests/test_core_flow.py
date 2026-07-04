@@ -289,6 +289,90 @@ def test_app_chat_audio_only_falls_back_when_stt_is_unavailable() -> None:
     assert "आवाज" in body["reply"]
 
 
+def test_twilio_whatsapp_text_location_and_media_webhooks() -> None:
+    text_response = client.post(
+        "/api/v1/twilio/whatsapp",
+        data={
+            "From": "whatsapp:+919970983794",
+            "MessageSid": "SM-TEXT-1",
+            "Body": "Should I irrigate today?",
+            "Language": "en-IN",
+        },
+    )
+    assert text_response.status_code == 200
+    assert text_response.headers["content-type"].startswith("text/xml")
+    assert "soil moisture" in text_response.text
+
+    location_response = client.post(
+        "/api/v1/twilio/whatsapp",
+        data={
+            "From": "whatsapp:+919970983794",
+            "MessageSid": "SM-LOC-1",
+            "Latitude": "19.0948",
+            "Longitude": "74.7480",
+            "Label": "Ahilyanagar farm",
+            "Language": "mr-IN",
+        },
+    )
+    assert location_response.status_code == 200
+    assert "लोकेशन सेव झाले" in location_response.text
+
+    media_response = client.post(
+        "/api/v1/twilio/whatsapp",
+        data={
+            "From": "whatsapp:+919970983794",
+            "MessageSid": "SM-MEDIA-1",
+            "Body": "tomato leaf spot",
+            "NumMedia": "1",
+            "MediaUrl0": "https://api.twilio.com/media/example.jpg",
+            "MediaContentType0": "image/jpeg",
+            "Language": "en-IN",
+        },
+    )
+    assert media_response.status_code == 200
+    assert "Ticket" in media_response.text
+
+
+def test_twilio_sms_and_voice_webhooks_return_twiml() -> None:
+    sms_response = client.post(
+        "/api/v1/twilio/sms",
+        data={
+            "From": "+919970983794",
+            "MessageSid": "SM-SMS-1",
+            "Body": "WATER MAIZE 414001",
+            "Language": "en-IN",
+        },
+    )
+    assert sms_response.status_code == 200
+    assert sms_response.headers["content-type"].startswith("text/xml")
+    assert "<Message>" in sms_response.text
+
+    voice_response = client.post(
+        "/api/v1/twilio/voice",
+        data={
+            "From": "+919970983794",
+            "CallSid": "CA123",
+            "SpeechResult": "Should I irrigate today",
+            "Language": "en-IN",
+        },
+    )
+    assert voice_response.status_code == 200
+    assert voice_response.headers["content-type"].startswith("text/xml")
+    assert "<Gather" in voice_response.text
+
+    dtmf_response = client.post(
+        "/api/v1/twilio/voice",
+        data={
+            "From": "+919970983794",
+            "CallSid": "CA124",
+            "Digits": "2",
+            "Language": "en-IN",
+        },
+    )
+    assert dtmf_response.status_code == 200
+    assert "SOIL" in dtmf_response.text
+
+
 def test_whatsapp_location_updates_farmer_farm_coordinates() -> None:
     response = client.post(
         "/api/v1/whatsapp/webhook",

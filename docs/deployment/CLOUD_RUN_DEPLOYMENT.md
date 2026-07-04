@@ -161,6 +161,14 @@ Authkey:
 - Voice-call inbound: `/api/v1/calls/webhook`
 - Voice-call receipt: `/api/v1/calls/receipt`
 
+Twilio:
+
+- WhatsApp inbound message URL: `/api/v1/twilio/whatsapp`
+- SMS inbound message URL: `/api/v1/twilio/sms`
+- Voice call webhook / Gather action URL: `/api/v1/twilio/voice`
+
+The Twilio endpoints accept `application/x-www-form-urlencoded` provider payloads and return TwiML. Text and speech are routed through Dialogflow CX when enabled. WhatsApp location and media payloads are normalized by the backend first because Twilio sends them as `Latitude` / `Longitude` and `MediaUrl0` / `MediaContentType0`.
+
 ## 6. Post-Deployment Checks
 
 ```bash

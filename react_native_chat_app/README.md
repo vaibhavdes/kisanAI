@@ -42,8 +42,9 @@ EXPO_PUBLIC_API_URL=http://192.168.1.20:8080 npm start
 
 - Phone and language onboarding.
 - Mobile-first WhatsApp-like chat UI.
-- Text messages to `/api/v1/whatsapp/webhook`.
+- Text, image, audio and location messages to the app endpoint `/api/v1/chat/message`.
+- Provider WhatsApp webhooks remain separate at `/api/v1/whatsapp/webhook` and `/api/v1/twilio/whatsapp`.
 - Location permission and coordinate sharing through Expo Location.
 - Crop photo selection/camera through Expo Image Picker.
-- Voice-note transcript shortcut that sends a normalized voice payload.
+- Voice notes through Expo Audio and backend STT/TTS when configured.
 - Runs in Expo Go; no custom native build is required for this first version.

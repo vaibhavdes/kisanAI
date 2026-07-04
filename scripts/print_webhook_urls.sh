@@ -29,6 +29,11 @@ Authkey / WhatsApp:
   Voice-call inbound:  ${SERVICE_URL}/api/v1/calls/webhook
   Voice-call receipt:  ${SERVICE_URL}/api/v1/calls/receipt
 
+Twilio:
+  WhatsApp inbound:    ${SERVICE_URL}/api/v1/twilio/whatsapp
+  SMS inbound:         ${SERVICE_URL}/api/v1/twilio/sms
+  Voice inbound:       ${SERVICE_URL}/api/v1/twilio/voice
+
 Scheduler/PubSub:
   Daily alert worker:  ${SERVICE_URL}/api/v1/alerts/run-daily/pubsub
 URLS
