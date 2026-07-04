@@ -7,13 +7,21 @@ from app.utils.language import phrase
 class CallService:
     def handle_call(self, payload: VoiceCallWebhookRequest) -> VoiceCallWebhookResponse:
         text = payload.transcript or self._intent_from_digit(payload.dtmf_digit)
-        dialogflow_response = self._dialogflow_response(payload, text)
+        intent = detect_farmer_intent(text)
+        dialogflow_response = self._dialogflow_response(payload, text, intent)
         if dialogflow_response:
             return dialogflow_response
 
-        intent = detect_farmer_intent(text)
-
-        if intent == "irrigation_advisory":
+        if intent in {"greeting", "general_advisory"}:
+            reply = phrase("general_response", payload.language, name=phrase("farmer_default_name", payload.language))
+            next_action = "listen_for_farmer_question"
+        elif intent == "identity_query":
+            reply = phrase("identity_response", payload.language, name=phrase("farmer_default_name", payload.language))
+            next_action = "listen_for_farmer_question"
+        elif intent == "weather_query":
+            reply = phrase("weather_response", payload.language)
+            next_action = "collect_location"
+        elif intent == "irrigation_advisory":
             reply = phrase("sms_water", payload.language)
             next_action = "collect_crop_and_pincode"
         elif intent == "crop_diagnosis":
@@ -44,7 +52,10 @@ class CallService:
         self,
         payload: VoiceCallWebhookRequest,
         text: str,
+        local_intent: str,
     ) -> VoiceCallWebhookResponse | None:
+        if local_intent in {"greeting", "identity_query", "weather_query", "unknown"}:
+            return None
         if not text:
             return None
         try:
@@ -64,6 +75,10 @@ class CallService:
             return None
         if not result.reply:
             return None
+        if _is_stale_menu_reply(result.reply):
+            return None
+        if local_intent not in {"general_advisory", "unknown"} and result.intent != local_intent:
+            return None
         return VoiceCallWebhookResponse(
             spoken_reply=result.reply,
             intent=result.intent,
@@ -77,4 +92,11 @@ class CallService:
             "crop_diagnosis": "send_photo_link_or_transfer_to_expert",
             "crop_recommendation": "collect_soil_rain_water_inputs",
             "location_update": "confirm_location",
+            "weather_query": "collect_location",
         }.get(intent, "repeat_menu")
+
+
+def _is_stale_menu_reply(reply: str) -> bool:
+    normalized = reply.lower()
+    stale_tokens = ["water, crop", "water crop", "soil, rain", "use water", "सलाह के लिए water"]
+    return any(token in normalized for token in stale_tokens)

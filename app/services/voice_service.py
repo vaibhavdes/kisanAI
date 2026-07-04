@@ -15,6 +15,7 @@ from app.models.schemas import (
     VoiceTranscribeResponse,
 )
 from app.repositories.store import store
+from app.services.channel_intent import detect_farmer_intent
 from app.utils.language import phrase
 
 
@@ -91,14 +92,7 @@ class VoiceService:
         raise VoiceProviderUnavailable("; ".join(errors) or "No TTS provider is configured.")
 
     def _detect_intent(self, transcript: str) -> str:
-        text = transcript.lower()
-        if any(word in text for word in ["water", "irrigation", "irrigate", "pani", "dry", "पाणी", "सिंचन", "ओलावा", "पाऊस"]):
-            return "irrigation_advisory"
-        if any(word in text for word in ["disease", "photo", "leaf", "spot", "रोग", "फोटो", "पान", "डाग"]):
-            return "crop_diagnosis"
-        if any(word in text for word in ["crop", "sow", "plant", "पीक", "पेरणी", "लागवड"]):
-            return "crop_recommendation"
-        return "general_advisory"
+        return detect_farmer_intent(transcript)
 
     def _response_for_intent(self, intent: str, name: str, language: str) -> str:
         if intent == "irrigation_advisory":
@@ -107,6 +101,10 @@ class VoiceService:
             return phrase("diagnosis_response", language, name=name)
         if intent == "crop_recommendation":
             return phrase("crop_response", language, name=name)
+        if intent == "identity_query":
+            return phrase("identity_response", language, name=name)
+        if intent == "weather_query":
+            return phrase("weather_response", language)
         return phrase("general_response", language, name=name, language=language)
 
     def _display_name(self, name: str, language: str) -> str:

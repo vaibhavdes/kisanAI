@@ -169,6 +169,93 @@ def test_low_connectivity_channels_accept_farmer_intent() -> None:
     assert call_response.json()["intent"] == "crop_recommendation"
 
 
+def test_hindi_chat_flow_stays_friendly_and_contextual() -> None:
+    phone = "+91 90000 11111"
+    first_response = client.post(
+        "/api/v1/chat/message",
+        json={"from_phone": phone, "text": "hi", "language": "hi-IN"},
+    )
+    assert first_response.status_code == 200
+    first_body = first_response.json()
+    assert first_body["intent"] == "general_advisory"
+    assert "किसान अलर्ट" in first_body["reply"]
+    assert "WATER" not in first_body["reply"]
+    assert "CROP" not in first_body["reply"]
+    assert "PHOTO" not in first_body["reply"]
+
+    identity_response = client.post(
+        "/api/v1/chat/message",
+        json={"from_phone": phone, "text": "mein kon hu", "language": "hi-IN"},
+    )
+    assert identity_response.status_code == 200
+    assert identity_response.json()["intent"] == "identity_query"
+    assert "फोन नंबर" in identity_response.json()["reply"]
+
+    weather_response = client.post(
+        "/api/v1/chat/message",
+        json={"from_phone": phone, "text": "aaj ka havamna batao", "language": "hi-IN"},
+    )
+    assert weather_response.status_code == 200
+    assert weather_response.json()["intent"] == "weather_query"
+    assert "मौसम" in weather_response.json()["reply"]
+
+    crop_response = client.post(
+        "/api/v1/chat/message",
+        json={"from_phone": phone, "text": "crop", "language": "hi-IN"},
+    )
+    assert crop_response.status_code == 200
+    assert crop_response.json()["intent"] == "crop_recommendation"
+    assert "मिट्टी" in crop_response.json()["reply"]
+
+    soil_response = client.post(
+        "/api/v1/chat/message",
+        json={"from_phone": phone, "text": "SOIL", "language": "hi-IN"},
+    )
+    assert soil_response.status_code == 200
+    assert soil_response.json()["intent"] == "crop_recommendation"
+    assert "फसल जानकारी" in soil_response.json()["reply"]
+
+    jowar_response = client.post(
+        "/api/v1/chat/message",
+        json={"from_phone": phone, "text": "Jowar", "language": "hi-IN"},
+    )
+    assert jowar_response.status_code == 200
+    assert jowar_response.json()["intent"] == "crop_recommendation"
+    assert "फसल जानकारी" in jowar_response.json()["reply"]
+
+    water_response = client.post(
+        "/api/v1/chat/message",
+        json={"from_phone": phone, "text": "WATER", "language": "hi-IN"},
+    )
+    assert water_response.status_code == 200
+    assert water_response.json()["intent"] == "crop_recommendation"
+    assert "फसल जानकारी" in water_response.json()["reply"]
+    assert "en-IN" not in water_response.json()["reply"]
+
+
+def test_dialogflow_stale_keyword_menu_is_ignored(monkeypatch) -> None:
+    def fake_route(self, **kwargs):
+        return DialogflowChannelResult(
+            intent="general_advisory",
+            confidence=0.95,
+            reply="Use WATER, CROP, or PHOTO to get advisory support.",
+            parameters={},
+            session_id=kwargs["session_id"],
+        )
+
+    monkeypatch.setattr("app.services.dialogflow_channel_service.DialogflowChannelService.route_text", fake_route)
+
+    response = client.post(
+        "/api/v1/chat/message",
+        json={"from_phone": "+91 90000 22222", "text": "Should I irrigate today?", "language": "en-IN"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["intent"] == "irrigation_advisory"
+    assert "WATER, CROP" not in body["reply"]
+
+
 def test_channels_use_dialogflow_adapter_when_available(monkeypatch) -> None:
     def fake_route(self, **kwargs):
         assert kwargs["language"] == "en-IN"
@@ -406,7 +493,7 @@ def test_twilio_sms_and_voice_webhooks_return_twiml() -> None:
         },
     )
     assert dtmf_response.status_code == 200
-    assert "SOIL" in dtmf_response.text
+    assert "soil" in dtmf_response.text.lower()
 
 
 def test_whatsapp_location_updates_farmer_farm_coordinates() -> None:

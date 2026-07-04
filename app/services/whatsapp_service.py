@@ -12,7 +12,7 @@ from app.models.schemas import (
     WhatsAppWebhookResponse,
 )
 from app.repositories.store import store
-from app.services.channel_intent import detect_farmer_intent
+from app.services.channel_intent import detect_farmer_intent, is_crop_followup_text, is_water_followup_text
 from app.services.conversation_store import ConversationStore
 from app.services.dialogflow_channel_service import DialogflowChannelService, DialogflowChannelUnavailable
 from app.services.expert_service import ExpertService
@@ -45,7 +45,15 @@ class WhatsAppService:
 
         transcript = self._transcribe_voice(payload, detected_language)
         text = transcript or payload.text
-        dialogflow_response = self._dialogflow_response(payload, farmer.id, detected_language, text, transcript)
+        intent = detect_farmer_intent(
+            text,
+            payload.media_uri,
+            media_type=payload.media_type,
+            has_location=payload.latitude is not None and payload.longitude is not None,
+        )
+        intent = self._intent_with_context(farmer.id, text, intent)
+
+        dialogflow_response = self._dialogflow_response(payload, farmer.id, detected_language, text, transcript, intent)
         if dialogflow_response:
             dialogflow_response.farmer_id = farmer.id
             dialogflow_response.detected_language = detected_language
@@ -76,13 +84,6 @@ class WhatsAppService:
                 channel,
             )
             return dialogflow_response
-
-        intent = detect_farmer_intent(
-            text,
-            payload.media_uri,
-            media_type=payload.media_type,
-            has_location=payload.latitude is not None and payload.longitude is not None,
-        )
 
         self._log_farmer_message(farmer.id, text or self._message_summary(payload), detected_language, intent, payload, channel)
         response = self._build_response(payload, farmer.id, detected_language, text, transcript, intent)
@@ -123,6 +124,34 @@ class WhatsAppService:
         if intent == "voice_message":
             return self._voice_intake_response(farmer_id, language, text or "", transcript, payload)
 
+        if intent in {"greeting", "general_advisory"}:
+            farmer = store.get_farmer(farmer_id)
+            name = self._display_name(farmer.name if farmer else "Farmer", language)
+            return WhatsAppWebhookResponse(
+                intent="general_advisory",
+                reply=phrase("general_response", language, name=name),
+                template_name="friendly_start",
+                transcript=transcript,
+            )
+
+        if intent == "identity_query":
+            farmer = store.get_farmer(farmer_id)
+            name = self._display_name(farmer.name if farmer else "Farmer", language)
+            return WhatsAppWebhookResponse(
+                intent=intent,
+                reply=phrase("identity_response", language, name=name),
+                template_name="identity_reply",
+                transcript=transcript,
+            )
+
+        if intent == "weather_query":
+            return WhatsAppWebhookResponse(
+                intent=intent,
+                reply=phrase("weather_response", language),
+                template_name="weather_intake",
+                transcript=transcript,
+            )
+
         if intent == "crop_diagnosis":
             if payload.media_uri or payload.media_base64:
                 return self._diagnose_crop_photo(payload, farmer_id, language, text, transcript)
@@ -134,9 +163,23 @@ class WhatsAppService:
             )
 
         if intent == "irrigation_advisory":
+            if self._last_active_intent(farmer_id) == "irrigation_advisory" and is_water_followup_text(text):
+                return WhatsAppWebhookResponse(
+                    intent=intent,
+                    reply=phrase("water_followup_ack", language),
+                    template_name="water_followup",
+                    transcript=transcript,
+                )
             return self._voice_intake_response(farmer_id, language, text or "water advice", transcript, payload)
 
         if intent == "crop_recommendation":
+            if self._is_crop_detail_followup(text):
+                return WhatsAppWebhookResponse(
+                    intent=intent,
+                    reply=phrase("crop_followup_ack", language),
+                    template_name="crop_followup",
+                    transcript=transcript,
+                )
             return WhatsAppWebhookResponse(
                 intent=intent,
                 reply=phrase("sms_crop", language),
@@ -158,7 +201,10 @@ class WhatsAppService:
         language: str,
         text: str | None,
         transcript: str | None,
+        local_intent: str,
     ) -> WhatsAppWebhookResponse | None:
+        if local_intent in {"greeting", "identity_query", "weather_query", "unknown"}:
+            return None
         if not text:
             return None
         if payload.latitude is not None or payload.longitude is not None:
@@ -182,12 +228,52 @@ class WhatsAppService:
             return None
         if not result.reply:
             return None
+        if self._is_stale_menu_reply(result.reply):
+            return None
+        if local_intent not in {"general_advisory", "unknown"} and result.intent != local_intent:
+            return None
         return WhatsAppWebhookResponse(
             intent=result.intent,
             reply=result.reply,
             template_name="dialogflow_reply",
             transcript=transcript,
         )
+
+    def _intent_with_context(self, farmer_id: str, text: str | None, intent: str) -> str:
+        if intent in {"location_update", "voice_message", "crop_diagnosis", "greeting", "identity_query", "weather_query"}:
+            return intent
+        previous_intent = self._last_active_intent(farmer_id)
+        if previous_intent == "crop_recommendation" and (
+            is_crop_followup_text(text) or self._is_short_confirmation(text)
+        ):
+            return "crop_recommendation"
+        if previous_intent == "irrigation_advisory" and is_water_followup_text(text):
+            return "irrigation_advisory"
+        return intent
+
+    def _last_active_intent(self, farmer_id: str) -> str | None:
+        for message in reversed(ConversationStore().recent(farmer_id, limit=8)):
+            if (
+                message.role == ConversationRole.assistant
+                and message.intent in {"crop_recommendation", "irrigation_advisory", "crop_diagnosis", "weather_query"}
+            ):
+                return message.intent
+        return None
+
+    def _is_stale_menu_reply(self, reply: str) -> bool:
+        normalized = reply.lower()
+        stale_tokens = ["water, crop", "water crop", "soil, rain", "use water", "सलाह के लिए water"]
+        return any(token in normalized for token in stale_tokens)
+
+    def _is_crop_detail_followup(self, text: str | None) -> bool:
+        normalized = (text or "").strip().lower()
+        if normalized in {"crop", "crops", "recommend crop", "which crop", "what crop", "फसल", "पीक", "પાક"}:
+            return False
+        return is_crop_followup_text(normalized) or self._is_short_confirmation(normalized)
+
+    def _is_short_confirmation(self, text: str | None) -> bool:
+        normalized = (text or "").strip().lower()
+        return normalized in {"yes", "no", "haan", "ha", "nahi", "ho", "हो", "नाही", "हां", "नहीं", "હા", "ના"}
 
     def _voice_intake_response(
         self,
@@ -421,3 +507,8 @@ class WhatsAppService:
             if crop in normalized:
                 return crop
         return None
+
+    def _display_name(self, name: str, language: str) -> str:
+        if name.strip().lower() == "farmer":
+            return phrase("farmer_default_name", language)
+        return name
