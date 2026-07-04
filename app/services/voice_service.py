@@ -42,7 +42,7 @@ class VoiceService:
             stt_provider = transcription.provider
 
         intent = self._detect_intent(transcript)
-        response = self._response_for_intent(intent, farmer.name, language)
+        response = self._response_for_intent(intent, self._display_name(farmer.name, language), language)
         tts_provider = None
         audio_base64 = None
         audio_content_type = None
@@ -93,11 +93,11 @@ class VoiceService:
 
     def _detect_intent(self, transcript: str) -> str:
         text = transcript.lower()
-        if any(word in text for word in ["water", "irrigation", "irrigate", "pani", "dry"]):
+        if any(word in text for word in ["water", "irrigation", "irrigate", "pani", "dry", "पाणी", "सिंचन", "ओलावा", "पाऊस"]):
             return "irrigation_advisory"
-        if any(word in text for word in ["disease", "photo", "leaf", "spot"]):
+        if any(word in text for word in ["disease", "photo", "leaf", "spot", "रोग", "फोटो", "पान", "डाग"]):
             return "crop_diagnosis"
-        if any(word in text for word in ["crop", "sow", "plant"]):
+        if any(word in text for word in ["crop", "sow", "plant", "पीक", "पेरणी", "लागवड"]):
             return "crop_recommendation"
         return "general_advisory"
 
@@ -109,6 +109,11 @@ class VoiceService:
         if intent == "crop_recommendation":
             return phrase("crop_response", language, name=name)
         return phrase("general_response", language, name=name, language=language)
+
+    def _display_name(self, name: str, language: str) -> str:
+        if name.strip().lower() == "farmer":
+            return phrase("farmer_default_name", language)
+        return name
 
     def _transcribe_with_google(
         self,

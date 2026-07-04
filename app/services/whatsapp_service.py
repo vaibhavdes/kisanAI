@@ -24,12 +24,18 @@ from app.utils.language import phrase
 
 
 class WhatsAppService:
-    def handle_message(self, payload: WhatsAppWebhookRequest) -> WhatsAppWebhookResponse:
-        detected_language = self._detect_language(payload.text) or payload.language
+    def handle_message(
+        self,
+        payload: WhatsAppWebhookRequest,
+        *,
+        channel: str = "whatsapp",
+        send_outbound: bool = True,
+    ) -> WhatsAppWebhookResponse:
+        detected_language = self._detect_language(payload.text) or self._fallback_language(payload.language)
         identity = store.identify_farmer(
             FarmerIdentifyRequest(
                 phone=payload.from_phone,
-                channel="whatsapp",
+                channel=channel,
                 language=detected_language,
                 latitude=payload.latitude,
                 longitude=payload.longitude,
@@ -50,18 +56,23 @@ class WhatsAppService:
                 detected_language,
                 dialogflow_response.intent,
                 payload,
+                channel,
             )
-            dialogflow_response.outbound_provider, dialogflow_response.delivery_status = self._send_whatsapp_reply(
-                payload.from_phone,
-                dialogflow_response.reply,
-                dialogflow_response.template_name,
-            )
+            if send_outbound:
+                dialogflow_response.outbound_provider, dialogflow_response.delivery_status = self._send_whatsapp_reply(
+                    payload.from_phone,
+                    dialogflow_response.reply,
+                    dialogflow_response.template_name,
+                )
+            else:
+                dialogflow_response.delivery_status = "app_response"
             self._log_assistant_message(
                 farmer.id,
                 dialogflow_response.reply,
                 detected_language,
                 dialogflow_response.intent,
                 dialogflow_response,
+                channel,
             )
             return dialogflow_response
 
@@ -72,7 +83,7 @@ class WhatsAppService:
             has_location=payload.latitude is not None and payload.longitude is not None,
         )
 
-        self._log_farmer_message(farmer.id, text or self._message_summary(payload), detected_language, intent, payload)
+        self._log_farmer_message(farmer.id, text or self._message_summary(payload), detected_language, intent, payload, channel)
         response = self._build_response(payload, farmer.id, detected_language, text, transcript, intent)
         response.farmer_id = farmer.id
         response.detected_language = detected_language
@@ -84,12 +95,15 @@ class WhatsAppService:
                 response.response_audio_base64 = response_audio.audio_base64
                 response.response_audio_content_type = response_audio.content_type
 
-        response.outbound_provider, response.delivery_status = self._send_whatsapp_reply(
-            payload.from_phone,
-            response.reply,
-            response.template_name,
-        )
-        self._log_assistant_message(farmer.id, response.reply, detected_language, response.intent, response)
+        if send_outbound:
+            response.outbound_provider, response.delivery_status = self._send_whatsapp_reply(
+                payload.from_phone,
+                response.reply,
+                response.template_name,
+            )
+        else:
+            response.delivery_status = "app_response"
+        self._log_assistant_message(farmer.id, response.reply, detected_language, response.intent, response, channel)
         return response
 
     def _build_response(
@@ -110,7 +124,7 @@ class WhatsAppService:
             )
 
         if intent == "voice_message":
-            return self._voice_intake_response(farmer_id, language, text or "", transcript)
+            return self._voice_intake_response(farmer_id, language, text or "", transcript, payload)
 
         if intent == "crop_diagnosis":
             if payload.media_uri or payload.media_base64:
@@ -123,7 +137,7 @@ class WhatsAppService:
             )
 
         if intent == "irrigation_advisory":
-            return self._voice_intake_response(farmer_id, language, text or "water advice", transcript)
+            return self._voice_intake_response(farmer_id, language, text or "water advice", transcript, payload)
 
         if intent == "crop_recommendation":
             return WhatsAppWebhookResponse(
@@ -184,14 +198,41 @@ class WhatsAppService:
         language: str,
         text: str,
         transcript: str | None,
+        payload: WhatsAppWebhookRequest | None = None,
     ) -> WhatsAppWebhookResponse:
         farmer = store.get_farmer(farmer_id)
         if not farmer:
             return WhatsAppWebhookResponse(intent="unknown", reply=phrase("sms_unknown", language))
-        voice_response = VoiceService().handle_intake(
-            farmer,
-            payload=VoiceIntakeRequest(farmer_id=farmer_id, transcript=text, language=language),
-        )
+        try:
+            voice_response = VoiceService().handle_intake(
+                farmer,
+                payload=VoiceIntakeRequest(
+                    farmer_id=farmer_id,
+                    transcript=text,
+                    audio_base64=payload.audio_base64 if payload else None,
+                    audio_uri=payload.audio_uri if payload else None,
+                    language=language,
+                ),
+            )
+            if (
+                payload
+                and (payload.audio_base64 or payload.audio_uri)
+                and not payload.text
+                and voice_response.detected_intent == "general_advisory"
+            ):
+                return WhatsAppWebhookResponse(
+                    intent="voice_message",
+                    reply=phrase("voice_transcription_needed", language),
+                    template_name="voice_transcription_needed",
+                    transcript=voice_response.transcript,
+                )
+        except VoiceProviderUnavailable:
+            return WhatsAppWebhookResponse(
+                intent="voice_message",
+                reply=phrase("voice_transcription_needed", language),
+                template_name="voice_transcription_needed",
+                transcript=transcript,
+            )
         return WhatsAppWebhookResponse(
             intent=voice_response.detected_intent,
             reply=voice_response.response_text,
@@ -234,7 +275,8 @@ class WhatsAppService:
                 diagnosis,
             )
             store.save_ticket(ticket)
-            reply = f"{diagnosis.likely_issue}. {diagnosis.immediate_action} Ticket: {ticket.id}"
+            ticket_label = "तिकीट" if language == "mr-IN" else "टिकट" if language == "hi-IN" else "Ticket"
+            reply = f"{diagnosis.likely_issue}. {diagnosis.immediate_action} {ticket_label}: {ticket.id}"
             return WhatsAppWebhookResponse(
                 intent="crop_diagnosis",
                 reply=reply,
@@ -283,6 +325,11 @@ class WhatsAppService:
         except TranslationProviderUnavailable:
             return None
 
+    def _fallback_language(self, language: str | None) -> str:
+        if language and language != "auto":
+            return language
+        return settings.default_language
+
     def _send_whatsapp_reply(self, phone: str, reply: str, template_name: str | None) -> tuple[str | None, str]:
         if not settings.authkey_api_key:
             return None, "skipped_no_authkey"
@@ -307,6 +354,7 @@ class WhatsAppService:
         language: str,
         intent: str,
         payload: WhatsAppWebhookRequest,
+        channel: str,
     ) -> None:
         ConversationStore().log(
             ConversationLogRequest(
@@ -314,7 +362,7 @@ class WhatsAppService:
                 role=ConversationRole.farmer,
                 text=text,
                 language=language,
-                channel="whatsapp",
+                channel=channel,
                 intent=intent,
                 metadata={
                     "message_id": payload.message_id,
@@ -333,6 +381,7 @@ class WhatsAppService:
         language: str,
         intent: str,
         response: WhatsAppWebhookResponse,
+        channel: str,
     ) -> None:
         ConversationStore().log(
             ConversationLogRequest(
@@ -340,7 +389,7 @@ class WhatsAppService:
                 role=ConversationRole.assistant,
                 text=reply,
                 language=language,
-                channel="whatsapp",
+                channel=channel,
                 intent=intent,
                 metadata={
                     "template_name": response.template_name,

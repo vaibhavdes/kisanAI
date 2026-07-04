@@ -634,7 +634,7 @@ class WhatsAppWebhookRequest(BaseModel):
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)
     location_label: str | None = None
-    language: str = "hi-IN"
+    language: str | None = None
 
 
 class WhatsAppWebhookResponse(BaseModel):

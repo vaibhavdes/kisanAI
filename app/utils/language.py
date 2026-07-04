@@ -75,6 +75,21 @@ PHRASES = {
         "mr-IN": "सल्ल्यासाठी WATER, CROP किंवा PHOTO लिहा.",
         "te-IN": "సలహా కోసం WATER, CROP లేదా PHOTO అని పంపండి.",
     },
+    "voice_transcription_needed": {
+        "en-IN": "Voice received. Speech service is not available right now, so please type the same question once.",
+        "hi-IN": "आवाज मिला। अभी speech service उपलब्ध नहीं है, कृपया वही सवाल एक बार लिखकर भेजें।",
+        "mr-IN": "आवाज मिळाला. सध्या आवाज ओळख सेवा उपलब्ध नाही, कृपया तोच प्रश्न एकदा लिहून पाठवा.",
+        "te-IN": "వాయిస్ వచ్చింది. ప్రస్తుతం speech service లేదు, దయచేసి అదే ప్రశ్నను ఒకసారి టైప్ చేసి పంపండి.",
+    },
+    "farmer_default_name": {
+        "en-IN": "Farmer",
+        "hi-IN": "किसान",
+        "mr-IN": "शेतकरी",
+        "te-IN": "రైతు",
+        "ta-IN": "விவசாயி",
+        "kn-IN": "ರೈತ",
+        "gu-IN": "ખેડૂત",
+    },
 }
 
 

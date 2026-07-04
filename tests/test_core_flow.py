@@ -224,6 +224,71 @@ def test_whatsapp_text_identifies_farmer_and_logs_conversation() -> None:
     assert [item["role"] for item in recent.json()] == ["farmer", "assistant"]
 
 
+def test_app_chat_handles_marathi_text_without_provider_send() -> None:
+    response = client.post(
+        "/api/v1/chat/message",
+        json={
+            "from_phone": "+91 99709 83794",
+            "text": "माझ्या शेताला आज पाणी द्यावे का?",
+            "language": "mr-IN",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["intent"] == "irrigation_advisory"
+    assert body["detected_language"] == "mr-IN"
+    assert body["delivery_status"] == "app_response"
+    assert "पाणी" in body["reply"] or "ओलावा" in body["reply"]
+
+    recent = client.get(f"/api/v1/conversations/{body['farmer_id']}")
+    assert recent.status_code == 200
+    messages = recent.json()
+    assert [item["channel"] for item in messages] == ["app", "app"]
+
+
+def test_app_chat_auto_language_uses_detection_when_frontend_omits_language(monkeypatch) -> None:
+    def fake_detect(self, text):
+        assert text == "आज पाणी द्यावे का?"
+        return "mr-IN"
+
+    monkeypatch.setattr("app.services.whatsapp_service.WhatsAppService._detect_language", fake_detect)
+
+    response = client.post(
+        "/api/v1/chat/message",
+        json={
+            "from_phone": "+91 99709 83795",
+            "text": "आज पाणी द्यावे का?",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["detected_language"] == "mr-IN"
+    farmer = store.get_farmer(body["farmer_id"])
+    assert farmer is not None
+    assert farmer.language == "mr-IN"
+
+
+def test_app_chat_audio_only_falls_back_when_stt_is_unavailable() -> None:
+    response = client.post(
+        "/api/v1/chat/message",
+        json={
+            "from_phone": "+91 99709 83796",
+            "audio_base64": base64.b64encode(b"voice").decode("ascii"),
+            "audio_mime_type": "audio/mp4",
+            "media_type": "audio",
+            "language": "mr-IN",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["intent"] == "voice_message"
+    assert body["delivery_status"] == "app_response"
+    assert "आवाज" in body["reply"]
+
+
 def test_whatsapp_location_updates_farmer_farm_coordinates() -> None:
     response = client.post(
         "/api/v1/whatsapp/webhook",

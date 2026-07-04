@@ -236,6 +236,8 @@ If a value is not visible, return null. Farmer language: {payload.language}.
             severity = RiskLevel.medium
             confidence = 0.55
 
+        issue, action = self._localized_fallback(issue, action, payload.language)
+
         return DiagnosisResult(
             crop=payload.crop,
             likely_issue=issue,
@@ -245,6 +247,33 @@ If a value is not visible, return null. Farmer language: {payload.language}.
             needs_expert_followup=True,
             source=source,
         )
+
+    def _localized_fallback(self, issue: str, action: str, language: str | None) -> tuple[str, str]:
+        if language == "mr-IN":
+            translations = {
+                "Possible sucking pest or leaf curl complex": "रसशोषक किड किंवा लीफ कर्लचा संभव",
+                "Scout leaf underside, use yellow sticky traps, and request expert validation.": "पानांच्या खालची बाजू तपासा, पिवळे चिकट सापळे वापरा आणि तज्ञांकडून खात्री करून घ्या.",
+                "Possible nutrient deficiency": "अन्नद्रव्य कमतरतेचा संभव",
+                "Check soil test and avoid excess nitrogen until moisture is adequate.": "माती परीक्षण तपासा आणि ओलावा पुरेसा होईपर्यंत जास्त नायट्रोजन टाळा.",
+                "Possible fungal leaf disease": "बुरशीजन्य पान रोगाचा संभव",
+                "Remove infected leaves and consult RSK before spraying.": "बाधित पाने काढा आणि फवारणीपूर्वी RSK/तज्ञांचा सल्ला घ्या.",
+                "General crop stress": "पिकावर सर्वसाधारण ताण दिसतो",
+                "Capture a clear leaf and whole-plant photo for expert review.": "तज्ञ तपासणीसाठी पानाचा आणि संपूर्ण झाडाचा स्पष्ट फोटो पाठवा.",
+            }
+            return translations.get(issue, issue), translations.get(action, action)
+        if language == "hi-IN":
+            translations = {
+                "Possible sucking pest or leaf curl complex": "रस चूसने वाले कीट या लीफ कर्ल की संभावना",
+                "Scout leaf underside, use yellow sticky traps, and request expert validation.": "पत्ते के नीचे जांचें, पीले चिपचिपे ट्रैप लगाएं और विशेषज्ञ से पुष्टि करें।",
+                "Possible nutrient deficiency": "पोषक तत्व की कमी की संभावना",
+                "Check soil test and avoid excess nitrogen until moisture is adequate.": "मिट्टी जांच देखें और नमी पर्याप्त होने तक अधिक नाइट्रोजन से बचें।",
+                "Possible fungal leaf disease": "फफूंदजनित पत्ती रोग की संभावना",
+                "Remove infected leaves and consult RSK before spraying.": "संक्रमित पत्ते हटाएं और छिड़काव से पहले RSK/विशेषज्ञ से सलाह लें।",
+                "General crop stress": "फसल पर सामान्य तनाव दिख रहा है",
+                "Capture a clear leaf and whole-plant photo for expert review.": "विशेषज्ञ जांच के लिए पत्ती और पूरे पौधे की साफ फोटो भेजें।",
+            }
+            return translations.get(issue, issue), translations.get(action, action)
+        return issue, action
 
     def _risk_from_text(self, value: str) -> RiskLevel:
         normalized = value.lower()

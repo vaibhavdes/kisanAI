@@ -1,4 +1,4 @@
-import type { WhatsAppPayload, WhatsAppResponse } from "@/types/chat";
+import type { ChatPayload, ChatResponse } from "@/types/chat";
 
 const fallbackUrl = process.env.EXPO_PUBLIC_API_URL || "http://10.0.2.2:8080";
 
@@ -28,8 +28,8 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export function sendWhatsAppMessage(payload: WhatsAppPayload): Promise<WhatsAppResponse> {
-  return postJson<WhatsAppResponse>("/api/v1/whatsapp/webhook", payload);
+export function sendChatMessage(payload: ChatPayload): Promise<ChatResponse> {
+  return postJson<ChatResponse>("/api/v1/chat/message", payload);
 }
 
 export const apiBaseUrl = fallbackUrl;

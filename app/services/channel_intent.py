@@ -18,10 +18,71 @@ def detect_farmer_intent(
     normalized = (text or "").strip().lower()
     if not normalized:
         return "unknown"
-    if any(word in normalized for word in ["water", "irrigation", "irrigate", "pani", "dry", "rain"]):
+    irrigation_terms = [
+        "water",
+        "irrigation",
+        "irrigate",
+        "pani",
+        "dry",
+        "rain",
+        "पाणी",
+        "सिंचन",
+        "ओलावा",
+        "पाऊस",
+        "सूखा",
+        "बारिश",
+        "સિંચાઈ",
+        "પાણી",
+        "நீர்",
+        "மழை",
+        "నీరు",
+        "వర్షం",
+        "ನೀರು",
+        "ಮಳೆ",
+    ]
+    diagnosis_terms = [
+        "photo",
+        "disease",
+        "leaf",
+        "spot",
+        "curl",
+        "फोटो",
+        "रोग",
+        "पान",
+        "डाग",
+        "बीमारी",
+        "पत्ता",
+        "फोटो",
+        "રોગ",
+        "પાન",
+        "நோய்",
+        "இலை",
+        "వ్యాధి",
+        "ఆకు",
+        "ರೋಗ",
+        "ಎಲೆ",
+    ]
+    crop_terms = [
+        "crop",
+        "sow",
+        "plant",
+        "recommend",
+        "पीक",
+        "पेरणी",
+        "लागवड",
+        "सुचवा",
+        "फसल",
+        "बुवाई",
+        "પાક",
+        "விவசாயம்",
+        "பயிர்",
+        "పంట",
+        "ಬೆಳೆ",
+    ]
+    if any(word in normalized for word in irrigation_terms):
         return "irrigation_advisory"
-    if any(word in normalized for word in ["photo", "disease", "leaf", "spot", "curl"]):
+    if any(word in normalized for word in diagnosis_terms):
         return "crop_diagnosis"
-    if any(word in normalized for word in ["crop", "sow", "plant", "recommend"]):
+    if any(word in normalized for word in crop_terms):
         return "crop_recommendation"
     return "general_advisory"
