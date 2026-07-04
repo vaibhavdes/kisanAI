@@ -18,8 +18,6 @@ htmlcov/
 docs/
 smoke_tests/
 tests/
-react_native_chat_app/
-react_native_chat_app/.expo/
-react_native_chat_app/dist/
-react_native_chat_app/node_modules/
+data/
+infra/
 node_modules/

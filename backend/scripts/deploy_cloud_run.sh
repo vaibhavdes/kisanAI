@@ -4,8 +4,9 @@ set -euo pipefail
 PROJECT_ID="${PROJECT_ID:-kisanai-501120}"
 REGION="${REGION:-asia-south1}"
 SERVICE_NAME="${SERVICE_NAME:-kisan-alert-api}"
+ENV_FILE="${ENV_FILE:-}"
 SERVICE_ACCOUNT_NAME="${SERVICE_ACCOUNT_NAME:-kisan-alert-runner}"
-SERVICE_ACCOUNT_EMAIL="${SERVICE_ACCOUNT_EMAIL:-${SERVICE_ACCOUNT_NAME}@${PROJECT_ID}.iam.gserviceaccount.com}"
+SERVICE_ACCOUNT_EMAIL="${SERVICE_ACCOUNT_EMAIL:-}"
 FIRESTORE_DATABASE="${FIRESTORE_DATABASE:-(default)}"
 BIGQUERY_PUBLIC_DATASET="${BIGQUERY_PUBLIC_DATASET:-kisan_ai_curated}"
 STORAGE_BUCKET="${STORAGE_BUCKET:-${PROJECT_ID}-kisan-ai-media}"
@@ -14,6 +15,42 @@ GEMINI_MODEL="${GEMINI_MODEL:-gemini-2.5-flash}"
 VERTEX_AI_MODEL="${VERTEX_AI_MODEL:-gemini-2.5-flash}"
 OPEN_METEO_BASE_URL="${OPEN_METEO_BASE_URL:-https://api.open-meteo.com/v1/forecast}"
 RYTHU_SEVA_DEFAULT_CENTER="${RYTHU_SEVA_DEFAULT_CENTER:-RSK Demo Center}"
+
+if [[ -z "${ENV_FILE}" ]]; then
+  if [[ -f ".env" ]]; then
+    ENV_FILE=".env"
+  elif [[ -f "../.env" ]]; then
+    ENV_FILE="../.env"
+  fi
+fi
+
+load_env_file() {
+  local file="$1"
+  local line key value
+  while IFS= read -r line || [[ -n "${line}" ]]; do
+    line="${line%$'\r'}"
+    [[ -z "${line}" || "${line}" =~ ^[[:space:]]*# ]] && continue
+    [[ "${line}" != *=* ]] && continue
+    key="${line%%=*}"
+    value="${line#*=}"
+    key="$(echo "${key}" | xargs)"
+    [[ "${key}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+    if [[ "${value}" == \"*\" && "${value}" == *\" ]]; then
+      value="${value:1:${#value}-2}"
+    elif [[ "${value}" == \'*\' && "${value}" == *\' ]]; then
+      value="${value:1:${#value}-2}"
+    fi
+    export "${key}=${value}"
+  done < "${file}"
+}
+
+if [[ -n "${ENV_FILE}" && -f "${ENV_FILE}" ]]; then
+  load_env_file "${ENV_FILE}"
+fi
+
+SERVICE_ACCOUNT_EMAIL="${SERVICE_ACCOUNT_EMAIL:-${SERVICE_ACCOUNT_NAME}@${PROJECT_ID}.iam.gserviceaccount.com}"
 
 echo "Deploying ${SERVICE_NAME} to project ${PROJECT_ID}, region ${REGION}"
 
@@ -72,6 +109,15 @@ GEMINI_MODEL=${GEMINI_MODEL},\
 VERTEX_AI_MODEL=${VERTEX_AI_MODEL},\
 OPEN_METEO_BASE_URL=${OPEN_METEO_BASE_URL},\
 RYTHU_SEVA_DEFAULT_CENTER=${RYTHU_SEVA_DEFAULT_CENTER},\
+IMD_API_BASE_URL=${IMD_API_BASE_URL:-},\
+AUTHKEY_TEST_COUNTRY_CODE=${AUTHKEY_TEST_COUNTRY_CODE:-91},\
+AUTHKEY_SMS_SENDER=${AUTHKEY_SMS_SENDER:-},\
+AUTHKEY_WHATSAPP_TEMPLATE_ID=${AUTHKEY_WHATSAPP_TEMPLATE_ID:-},\
+AUTHKEY_WHATSAPP_MEDIA_TEMPLATE_ID=${AUTHKEY_WHATSAPP_MEDIA_TEMPLATE_ID:-},\
+AUTHKEY_SEND_ENABLED=${AUTHKEY_SEND_ENABLED:-false},\
+SARVAM_API_BASE_URL=${SARVAM_API_BASE_URL:-https://api.sarvam.ai},\
+SARVAM_STT_MODEL=${SARVAM_STT_MODEL:-saaras:v3},\
+SARVAM_TRANSLATE_MODEL=${SARVAM_TRANSLATE_MODEL:-mayura:v1},\
 DIALOGFLOW_ROUTING_ENABLED=${DIALOGFLOW_ROUTING_ENABLED:-false},\
 DIALOGFLOW_LOCATION=${DIALOGFLOW_LOCATION:-${REGION}},\
 DIALOGFLOW_AGENT_ID=${DIALOGFLOW_AGENT_ID:-},\
@@ -80,18 +126,21 @@ DIALOGFLOW_CONFIDENCE_THRESHOLD=${DIALOGFLOW_CONFIDENCE_THRESHOLD:-0.45}"
 )
 
 SECRET_MAPPINGS=()
-if [[ -n "${GEMINI_API_KEY_SECRET:-}" ]]; then
-  SECRET_MAPPINGS+=("GEMINI_API_KEY=${GEMINI_API_KEY_SECRET}:latest")
-fi
-if [[ -n "${SARVAM_API_KEY_SECRET:-}" ]]; then
-  SECRET_MAPPINGS+=("SARVAM_API_KEY=${SARVAM_API_KEY_SECRET}:latest")
-fi
-if [[ -n "${AUTHKEY_API_KEY_SECRET:-}" ]]; then
-  SECRET_MAPPINGS+=("AUTHKEY_API_KEY=${AUTHKEY_API_KEY_SECRET}:latest")
-fi
-if [[ -n "${MAPS_API_KEY_SECRET:-}" ]]; then
-  SECRET_MAPPINGS+=("MAPS_API_KEY=${MAPS_API_KEY_SECRET}:latest")
-fi
+for env_name in \
+  GEMINI_API_KEY \
+  SARVAM_API_KEY \
+  AUTHKEY_API_KEY \
+  MAPS_API_KEY \
+  IMD_API_KEY \
+  SMS_PROVIDER_API_KEY \
+  WHATSAPP_BUSINESS_TOKEN \
+  VOICE_CALL_PROVIDER_API_KEY; do
+  secret_var="${env_name}_SECRET"
+  secret_name="${!secret_var:-${env_name}}"
+  if gcloud secrets describe "${secret_name}" >/dev/null 2>&1; then
+    SECRET_MAPPINGS+=("${env_name}=${secret_name}:latest")
+  fi
+done
 
 SECRET_ARGS=()
 if [[ "${#SECRET_MAPPINGS[@]}" -gt 0 ]]; then

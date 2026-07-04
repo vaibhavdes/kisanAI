@@ -18,18 +18,12 @@ Kisan Alert is a FastAPI + React Native prototype for small and marginal farmers
 ## Repository Layout
 
 ```text
-app/                    FastAPI backend package
-scripts/                data fetch, ingestion and deployment helpers
-infra/bigquery/         BigQuery schema
-data/raw/               local public-data source copies
-data/normalized/        normalized CSVs ready for BigQuery
-smoke_tests/            real-provider checks
-tests/                  automated local tests
+backend/                FastAPI backend, data, tests, scripts and Cloud Run deploy files
 react_native_chat_app/  Expo React Native frontend for Android and web
-docs/                   setup/provider reference notes
+README.md               Project overview and demo/deployment guide
 ```
 
-The tracked frontend is `react_native_chat_app`. Any old Flutter prototype folder is not part of the committed app.
+The backend and frontend are intentionally separated. Backend-only files live under `backend/`; farmer-facing app/web files live under `react_native_chat_app/`.
 
 ## What Is Implemented
 
@@ -134,13 +128,13 @@ BigQuery dataset: `kisan_ai_curated`.
 | `maharashtra_heavy_rainfall_events` | 6,023 | Maharain tehsil heavy-rainfall report, 2021-2025 |
 | `crop_production_history` | 5,378 | All-India crop-wise/year-wise APY CSVs, Maharashtra rice estimate CSV, DES district XLSX visible Maharashtra row |
 
-Raw source copies are kept in `data/raw/uploads/`. Generated normalized files are in `data/normalized/`.
+Raw source copies are kept in `backend/data/raw/uploads/`. Generated normalized files are in `backend/data/normalized/`.
 
 Additional normalized files prepared after the verified BigQuery load:
 
-- `data/normalized/crop_production_history/all_states_rice_estimate.csv`: 473 rows from the all-state rice estimate file.
-- `data/normalized/crop_production_history/des_district_2024_25_all_visible_rows.csv`: 29 visible DES workbook rows.
-- `data/normalized/aspirational_districts/aspirational_districts.csv`: 112 aspirational district rows.
+- `backend/data/normalized/crop_production_history/all_states_rice_estimate.csv`: 473 rows from the all-state rice estimate file.
+- `backend/data/normalized/crop_production_history/des_district_2024_25_all_visible_rows.csv`: 29 visible DES workbook rows.
+- `backend/data/normalized/aspirational_districts/aspirational_districts.csv`: 112 aspirational district rows.
 
 Load these with the commands in the data-loading section after applying the latest schema.
 
@@ -169,7 +163,7 @@ Regional data can be reused for farmers in the same area. Cache key uses source 
 
 ## Required Environment
 
-Only `.env.example` is tracked. Real `.env`, `Details.txt`, service-account JSON and `local-secrets/` are ignored and must be shared separately.
+Only `backend/.env.example` is tracked. Real `.env`, `Details.txt`, service-account JSON and `local-secrets/` are ignored and must be shared separately.
 
 Minimum local/offline run:
 
@@ -245,6 +239,7 @@ Fine-tuning can be considered later only after collecting enough expert-validate
 Install backend dependencies once:
 
 ```bash
+cd backend
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -254,13 +249,15 @@ pip install -e ".[dev]"
 Local/offline backend, no Google/provider calls:
 
 ```bash
-DATA_STORE_PROVIDER=local ENABLE_GOOGLE_INTEGRATIONS=false .venv-google/bin/uvicorn app.main:app --host 127.0.0.1 --port 8080
+cd backend
+DATA_STORE_PROVIDER=local ENABLE_GOOGLE_INTEGRATIONS=false .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8080
 ```
 
 Live GCP/provider backend using `.env`, Firestore, BigQuery, Google/Sarvam/Authkey config:
 
 ```bash
-DATA_STORE_PROVIDER=firestore ENABLE_GOOGLE_INTEGRATIONS=true .venv-google/bin/uvicorn app.main:app --host 127.0.0.1 --port 8080
+cd backend
+DATA_STORE_PROVIDER=firestore ENABLE_GOOGLE_INTEGRATIONS=true .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8080
 ```
 
 Frontend:
@@ -290,9 +287,20 @@ EXPO_PUBLIC_API_URL=http://YOUR_MACHINE_LAN_IP:8080 npm start
 ## Tests
 
 ```bash
-DATA_STORE_PROVIDER=local ENABLE_GOOGLE_INTEGRATIONS=false .venv-google/bin/python -m pytest tests
-.venv-google/bin/python -m compileall app scripts smoke_tests tests
-cd react_native_chat_app && npm run typecheck
+cd backend
+DATA_STORE_PROVIDER=local ENABLE_GOOGLE_INTEGRATIONS=false .venv/bin/python -m pytest tests
+.venv/bin/python -m compileall app scripts smoke_tests tests
+cd ../react_native_chat_app
+npm run typecheck
+```
+
+If using the existing shared `.venv-google` from this workspace:
+
+```bash
+cd backend
+DATA_STORE_PROVIDER=local ENABLE_GOOGLE_INTEGRATIONS=false ../.venv-google/bin/python -m pytest tests
+../.venv-google/bin/python -m compileall app scripts smoke_tests tests
+cd ../react_native_chat_app && npm run typecheck
 ```
 
 Latest verified result:
@@ -302,15 +310,16 @@ Latest verified result:
 React Native typecheck passed
 ```
 
-Real-provider smoke tests are in `smoke_tests/`. They require `.env` keys and Google ADC:
+Real-provider smoke tests are in `backend/smoke_tests/`. They require `.env` keys and Google ADC:
 
 ```bash
+cd backend
 gcloud auth application-default login
-.venv-google/bin/python smoke_tests/test_gemini.py
-.venv-google/bin/python smoke_tests/test_firestore.py
-.venv-google/bin/python smoke_tests/test_bigquery_public_context.py
-.venv-google/bin/python smoke_tests/test_open_meteo.py
-.venv-google/bin/python smoke_tests/test_authkey_channels.py
+.venv/bin/python smoke_tests/test_gemini.py
+.venv/bin/python smoke_tests/test_firestore.py
+.venv/bin/python smoke_tests/test_bigquery_public_context.py
+.venv/bin/python smoke_tests/test_open_meteo.py
+.venv/bin/python smoke_tests/test_authkey_channels.py
 ```
 
 ## Data Loading
@@ -318,50 +327,51 @@ gcloud auth application-default login
 Apply schema:
 
 ```bash
+cd backend
 bq query --use_legacy_sql=false < infra/bigquery/public_data_schema.sql
 ```
 
 Normalize source files:
 
 ```bash
-.venv-google/bin/python scripts/fetch_public_data_sources.py normalize-imd-subdivision \
+.venv/bin/python scripts/fetch_public_data_sources.py normalize-imd-subdivision \
   data/raw/uploads/Sub_Division_IMD_2017.csv \
   --out data/normalized/subdivision_rainfall_history/imd_subdivision_2017.csv
 
-.venv-google/bin/python scripts/fetch_public_data_sources.py fetch-maharain \
+.venv/bin/python scripts/fetch_public_data_sources.py fetch-maharain \
   --start-year 2021 \
   --end-year 2025 \
   --out-dir data/raw/maharain \
   --normalized-dir data/normalized \
   --insecure
 
-.venv-google/bin/python scripts/fetch_public_data_sources.py normalize-crop-csv \
+.venv/bin/python scripts/fetch_public_data_sources.py normalize-crop-csv \
   "data/raw/uploads/Final-Estimate-of-Area,-Production-&-Yield-for-Rice.csv" \
   --state-filter Maharashtra \
   --out data/normalized/crop_production_history/maharashtra_rice_estimate.csv
 
-.venv-google/bin/python scripts/fetch_public_data_sources.py normalize-crop-csv \
+.venv/bin/python scripts/fetch_public_data_sources.py normalize-crop-csv \
   "data/raw/uploads/All-India_-Crop-wise-Area,-Production-&-Yield.csv" \
   --out data/normalized/crop_production_history/all_india_crop_wise.csv
 
-.venv-google/bin/python scripts/fetch_public_data_sources.py normalize-crop-csv \
+.venv/bin/python scripts/fetch_public_data_sources.py normalize-crop-csv \
   "data/raw/uploads/All-India_-Year-wise-Crop-Area,-Production-&-Yield.csv" \
   --out data/normalized/crop_production_history/all_india_year_wise.csv
 
-.venv-google/bin/python scripts/fetch_public_data_sources.py normalize-des-district-xlsx \
+.venv/bin/python scripts/fetch_public_data_sources.py normalize-des-district-xlsx \
   "data/raw/uploads/DES-District-Data-For-2024-25.xlsx" \
   --state-filter Maharashtra \
   --out data/normalized/crop_production_history/maharashtra_des_district_2024_25.csv
 
-.venv-google/bin/python scripts/fetch_public_data_sources.py normalize-crop-csv \
+.venv/bin/python scripts/fetch_public_data_sources.py normalize-crop-csv \
   "data/raw/uploads/Final-Estimate-of-Area,-Production-&-Yield-for-Rice.csv" \
   --out data/normalized/crop_production_history/all_states_rice_estimate.csv
 
-.venv-google/bin/python scripts/fetch_public_data_sources.py normalize-des-district-xlsx \
+.venv/bin/python scripts/fetch_public_data_sources.py normalize-des-district-xlsx \
   "data/raw/uploads/DES-District-Data-For-2024-25.xlsx" \
   --out data/normalized/crop_production_history/des_district_2024_25_all_visible_rows.csv
 
-.venv-google/bin/python scripts/fetch_public_data_sources.py normalize-aspirational-districts \
+.venv/bin/python scripts/fetch_public_data_sources.py normalize-aspirational-districts \
   "data/raw/uploads/Aspirational District.csv" \
   --out data/normalized/aspirational_districts/aspirational_districts.csv
 ```
@@ -369,34 +379,34 @@ Normalize source files:
 Load normalized data:
 
 ```bash
-.venv-google/bin/python scripts/ingest_public_data.py subdivision_rainfall_history \
+.venv/bin/python scripts/ingest_public_data.py subdivision_rainfall_history \
   data/normalized/subdivision_rainfall_history/imd_subdivision_2017.csv \
   --source-name "IMD subdivision rainfall CSV" \
   --source-url "https://api.data.gov.in/resource/d0419b03-b41b-4226-b48b-0bc92bf139f8"
 
-.venv-google/bin/python scripts/ingest_public_data.py maharashtra_dryspell_events \
+.venv/bin/python scripts/ingest_public_data.py maharashtra_dryspell_events \
   data/normalized/maharashtra_dryspell_events/maharain_dryspell.csv \
   --source-name "Maharain tehsil dry spell" \
   --source-url "https://maharain.maharashtra.gov.in/test/maharain/rpt_past_queries_tehsil_wise_dryspell.php"
 
-.venv-google/bin/python scripts/ingest_public_data.py maharashtra_heavy_rainfall_events \
+.venv/bin/python scripts/ingest_public_data.py maharashtra_heavy_rainfall_events \
   data/normalized/maharashtra_heavy_rainfall_events/maharain_heavy_rainfall.csv \
   --source-name "Maharain tehsil heavy rainfall" \
   --source-url "https://maharain.maharashtra.gov.in/test/maharain/rpt_past_queries_tehsil_wise_heavy_rainfall.php"
 
-.venv-google/bin/python scripts/ingest_public_data.py crop_production_history \
+.venv/bin/python scripts/ingest_public_data.py crop_production_history \
   data/normalized/crop_production_history/maharashtra_rice_estimate.csv \
   --source-name "DES final rice estimate"
 
-.venv-google/bin/python scripts/ingest_public_data.py crop_production_history \
+.venv/bin/python scripts/ingest_public_data.py crop_production_history \
   data/normalized/crop_production_history/all_states_rice_estimate.csv \
   --source-name "All-state rice final estimate"
 
-.venv-google/bin/python scripts/ingest_public_data.py crop_production_history \
+.venv/bin/python scripts/ingest_public_data.py crop_production_history \
   data/normalized/crop_production_history/des_district_2024_25_all_visible_rows.csv \
   --source-name "DES district 2024-25 visible rows"
 
-.venv-google/bin/python scripts/ingest_public_data.py aspirational_districts \
+.venv/bin/python scripts/ingest_public_data.py aspirational_districts \
   data/normalized/aspirational_districts/aspirational_districts.csv \
   --source-name "Aspirational Districts"
 ```
@@ -445,28 +455,30 @@ Useful endpoints:
 
 ## Deployment
 
-Create secrets in Secret Manager for each real key, then deploy:
+Backend deploy to Cloud Run:
 
 ```bash
+cd backend
+ENV_FILE=../.env PROJECT_ID=kisanai-501120 scripts/sync_env_to_secret_manager.sh
+
 PROJECT_ID=kisanai-501120 \
 REGION=asia-south1 \
 SERVICE_NAME=kisan-alert-api \
-GEMINI_API_KEY_SECRET=GEMINI_API_KEY \
-SARVAM_API_KEY_SECRET=SARVAM_API_KEY \
-AUTHKEY_API_KEY_SECRET=AUTHKEY_API_KEY \
-MAPS_API_KEY_SECRET=MAPS_API_KEY \
+ENV_FILE=../.env \
 scripts/deploy_cloud_run.sh
 ```
 
 Set up daily alerts:
 
 ```bash
+cd backend
 PROJECT_ID=kisanai-501120 REGION=asia-south1 SERVICE_NAME=kisan-alert-api scripts/setup_scheduler_pubsub.sh
 ```
 
 Print webhook URLs:
 
 ```bash
+cd backend
 PROJECT_ID=kisanai-501120 REGION=asia-south1 SERVICE_NAME=kisan-alert-api scripts/print_webhook_urls.sh
 ```
 
@@ -490,14 +502,18 @@ Admin demo after deployment:
 6. The panel calls `/api/v1/alerts/run-daily`; urgent dry-spell risk produces WhatsApp/SMS/voice-call channels based on the alert priority policy. If `AUTHKEY_SEND_ENABLED=false`, results show dry-run/skipped status without sending.
 7. Crop photo diagnosis creates expert tickets; use the Expert Tickets panel to assign/respond/update status.
 
-Frontend web export:
+Frontend web deploy to Cloud Run:
 
 ```bash
 cd react_native_chat_app
-EXPO_PUBLIC_API_URL=https://SERVICE_URL npm run export:web
+PROJECT_ID=kisanai-501120 \
+REGION=asia-south1 \
+BACKEND_SERVICE_NAME=kisan-alert-api \
+FRONTEND_SERVICE_NAME=kisan-alert-web \
+scripts/deploy_cloud_run_web.sh
 ```
 
-Deploy `react_native_chat_app/dist/` to Firebase Hosting, Cloud Storage static hosting, Netlify, Vercel or any static host. For Android build, set `EXPO_PUBLIC_API_URL=https://SERVICE_URL` before building.
+For Android build, set `EXPO_PUBLIC_API_URL=https://BACKEND_SERVICE_URL` before building.
 
 ## Known Limits
 

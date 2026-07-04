@@ -15,8 +15,8 @@ Provider webhooks such as `/api/v1/whatsapp/webhook` and `/api/v1/twilio/whatsap
 Start the backend:
 
 ```bash
-cd ..
-DATA_STORE_PROVIDER=local ENABLE_GOOGLE_INTEGRATIONS=false .venv-google/bin/uvicorn app.main:app --reload --port 8080
+cd ../backend
+DATA_STORE_PROVIDER=local ENABLE_GOOGLE_INTEGRATIONS=false .venv/bin/uvicorn app.main:app --reload --port 8080
 ```
 
 Install and run the mobile app:
@@ -40,6 +40,16 @@ Static web export check:
 
 ```bash
 EXPO_PUBLIC_API_URL=http://127.0.0.1:8080 npm run export:web
+```
+
+Deploy web frontend to Cloud Run after backend is deployed:
+
+```bash
+PROJECT_ID=kisanai-501120 \
+REGION=asia-south1 \
+BACKEND_SERVICE_NAME=kisan-alert-api \
+FRONTEND_SERVICE_NAME=kisan-alert-web \
+scripts/deploy_cloud_run_web.sh
 ```
 
 For a physical Android device, set `EXPO_PUBLIC_API_URL` to your machine LAN IP, for example:

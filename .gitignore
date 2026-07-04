@@ -1,8 +1,13 @@
 .env
+backend/.env
 local-secrets/
+backend/local-secrets/
 .venv/
 .venv-*/
+backend/.venv/
+backend/.venv-*/
 Details.txt
+backend/Details.txt
 __pycache__/
 .pytest_cache/
 .ruff_cache/
@@ -11,6 +16,8 @@ __pycache__/
 *.pyd
 dist/
 build/
+backend/dist/
+backend/build/
 react_native_chat_app/.expo/
 react_native_chat_app/dist/
 react_native_chat_app/node_modules/
