@@ -3,6 +3,7 @@ from typing import Any
 from app.core.config import settings
 from app.models.schemas import DataSignal, GovernmentDataContextRequest, GovernmentDataContextResponse
 from app.services.government_data_service import GovernmentDataService
+from app.services.imd_region_mapping import maharashtra_imd_subdivision_for_district
 
 
 class BigQueryPublicDataService:
@@ -63,6 +64,9 @@ class BigQueryPublicDataService:
             extra={"month": payload.month},
         )
         if not rows:
+            subdivision_signal = self._subdivision_rainfall_normal(payload)
+            if subdivision_signal.available:
+                return subdivision_signal
             return self._missing("district_rainfall_normals", "No rainfall normal found for district/month.")
         row = rows[0]
         return DataSignal(
@@ -72,6 +76,43 @@ class BigQueryPublicDataService:
             unit="mm",
             note="Historical district monthly rainfall normal.",
             metadata={"month": payload.month},
+        )
+
+    def _subdivision_rainfall_normal(self, payload: GovernmentDataContextRequest) -> DataSignal:
+        if payload.month is None or payload.state.lower() != "maharashtra":
+            return self._missing("subdivision_rainfall_history", "Subdivision rainfall fallback not applicable.")
+        subdivision = maharashtra_imd_subdivision_for_district(payload.district)
+        if not subdivision:
+            return self._missing("subdivision_rainfall_history", "No IMD subdivision mapping for district.")
+        rows = self._query(
+            """
+            SELECT AVG(rainfall_mm) AS normal_rainfall_mm,
+                   COUNT(rainfall_mm) AS sample_count,
+                   MAX(year) AS latest_year,
+                   ANY_VALUE(source_name) AS source_name
+            FROM `{project}.{dataset}.subdivision_rainfall_history`
+            WHERE LOWER(subdivision) = LOWER(@subdivision)
+              AND month = @month
+              AND rainfall_mm IS NOT NULL
+            """,
+            payload,
+            extra={"month": payload.month, "subdivision": subdivision},
+        )
+        if not rows or rows[0].get("normal_rainfall_mm") is None:
+            return self._missing("subdivision_rainfall_history", "No subdivision rainfall history found.")
+        row = rows[0]
+        return DataSignal(
+            available=True,
+            source=str(row.get("source_name") or "subdivision_rainfall_history"),
+            value=self._float(row.get("normal_rainfall_mm")),
+            unit="mm",
+            note=f"IMD subdivision monthly rainfall normal fallback for {subdivision}.",
+            metadata={
+                "month": payload.month,
+                "subdivision": subdivision,
+                "sample_count": self._int(row.get("sample_count")),
+                "latest_year": self._int(row.get("latest_year")),
+            },
         )
 
     def _groundwater(self, payload: GovernmentDataContextRequest) -> DataSignal:

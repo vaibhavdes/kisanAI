@@ -1360,6 +1360,51 @@ def test_bigquery_public_context_maps_available_signals() -> None:
     assert context.soil_health.metadata["ph"] == 6.8
 
 
+def test_bigquery_public_context_uses_maharashtra_subdivision_rainfall_fallback() -> None:
+    class Row(dict):
+        def items(self):
+            return super().items()
+
+    class QueryResult:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def result(self):
+            return self.rows
+
+    class Client:
+        def query(self, query, job_config=None):
+            if "district_rainfall_normals" in query:
+                return QueryResult([])
+            if "subdivision_rainfall_history" in query:
+                return QueryResult(
+                    [
+                        Row(
+                            normal_rainfall_mm=142.5,
+                            sample_count=117,
+                            latest_year=2017,
+                            source_name="IMD subdivision rainfall CSV",
+                        )
+                    ]
+                )
+            return QueryResult([])
+
+    context = BigQueryPublicDataService(client=Client()).build_context(
+        GovernmentDataContextRequest(
+            state="Maharashtra",
+            district="Ahilyanagar",
+            crop="Rice",
+            season="Kharif",
+            month=7,
+        )
+    )
+
+    assert context.rainfall_normal.available is True
+    assert context.rainfall_normal.value == 142.5
+    assert context.rainfall_normal.metadata["subdivision"] == "Madhya Maharashtra"
+    assert "rainfall_normal" not in context.missing_sources
+
+
 def test_bigquery_public_data_ingestion_loads_normalized_csv(tmp_path) -> None:
     class Job:
         def result(self):
