@@ -7,6 +7,14 @@ from app.services.expert_service import ExpertService
 router = APIRouter()
 
 
+@router.get("/tickets", response_model=list[ExpertTicket])
+def all_tickets(limit: int = 100) -> list[ExpertTicket]:
+    tickets: list[ExpertTicket] = []
+    for farmer in store.list_farmers(limit=limit):
+        tickets.extend(store.list_tickets(farmer.id))
+    return sorted(tickets, key=lambda ticket: ticket.updated_at, reverse=True)[:limit]
+
+
 @router.get("/tickets/{farmer_id}", response_model=list[ExpertTicket])
 def tickets_for_farmer(farmer_id: str) -> list[ExpertTicket]:
     return store.list_tickets(farmer_id)

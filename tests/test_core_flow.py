@@ -135,6 +135,40 @@ def test_admin_dashboard_serves_provider_switch_ui() -> None:
     assert "Kisan Alert Admin" in response.text
     assert "/api/v1/providers/config" in response.text
     assert "/health" in response.text
+    assert "Demo Alert Simulation" in response.text
+    assert "/api/v1/alerts/run-daily" in response.text
+    assert "/api/v1/expert/tickets" in response.text
+
+
+def test_admin_supporting_endpoints_list_farmers_and_tickets() -> None:
+    farmer_id = create_demo_farmer()
+    farmers_response = client.get("/api/v1/farmers")
+    assert farmers_response.status_code == 200
+    assert any(farmer["id"] == farmer_id for farmer in farmers_response.json())
+
+    diagnosis_response = client.post(
+        "/api/v1/diagnosis/log",
+        json={
+            "farmer_id": farmer_id,
+            "crop": "tomato",
+            "symptoms_text": "leaf spots",
+            "language": "en-IN",
+        },
+    )
+    assert diagnosis_response.status_code == 200
+
+    tickets_response = client.get("/api/v1/expert/tickets")
+    assert tickets_response.status_code == 200
+    tickets = tickets_response.json()
+    assert tickets
+    ticket_id = tickets[0]["id"]
+
+    update_response = client.patch(
+        f"/api/v1/expert/ticket/{ticket_id}",
+        json={"status": "resolved", "assigned_expert": "Demo Expert", "expert_note": "Spray after expert check."},
+    )
+    assert update_response.status_code == 200
+    assert update_response.json()["status"] == "resolved"
 
 
 def test_low_connectivity_channels_accept_farmer_intent() -> None:

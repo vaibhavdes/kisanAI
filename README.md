@@ -10,10 +10,26 @@ Kisan Alert is a FastAPI + React Native prototype for small and marginal farmers
 2. Farmer is identified by phone number across channels.
 3. Language is selected or detected from the farmer message.
 4. Farmer can send text, voice note, crop photo or farm location.
-5. Backend stores farmer context and conversation history.
+5. Backend stores farmer context, conversation history and newly captured facts.
 6. Advisory uses weather, crop stage, crop history, rainfall, dry-spell/heavy-rain history, soil, groundwater and satellite signals when available.
 7. Crop photo/voice logs can create expert follow-up tickets.
 8. Response is returned as text and, when TTS provider is configured, voice audio in the farmer language.
+
+## Repository Layout
+
+```text
+app/                    FastAPI backend package
+scripts/                data fetch, ingestion and deployment helpers
+infra/bigquery/         BigQuery schema
+data/raw/               local public-data source copies
+data/normalized/        normalized CSVs ready for BigQuery
+smoke_tests/            real-provider checks
+tests/                  automated local tests
+react_native_chat_app/  Expo React Native frontend for Android and web
+docs/                   setup/provider reference notes
+```
+
+The tracked frontend is `react_native_chat_app`. Any old Flutter prototype folder is not part of the committed app.
 
 ## What Is Implemented
 
@@ -29,7 +45,7 @@ Kisan Alert is a FastAPI + React Native prototype for small and marginal farmers
 - IMD weather primary route with Open-Meteo fallback.
 - Earth Engine NDVI, NDWI, NDMI, EVI and NDRE adapter.
 - BigQuery public-data ingestion and context lookup.
-- Admin UI at `/admin` for provider health and provider switching.
+- Passwordless admin UI at `/admin` for provider switching, service health, expert tickets and proactive alert demo simulation.
 - Daily alert runner and Pub/Sub/Scheduler-compatible endpoint.
 
 ## Architecture
@@ -38,7 +54,7 @@ Kisan Alert is a FastAPI + React Native prototype for small and marginal farmers
 flowchart LR
   Farmer["Farmer app / WhatsApp / SMS / Voice"] --> Channels["Channel adapters"]
   Channels --> Backend["FastAPI backend"]
-  Channels --> Dialogflow["Dialogflow CX optional text/voice routing"]
+  Channels --> Dialogflow["Dialogflow CX optional intent routing"]
   Dialogflow --> Backend
   Backend --> Store["Firestore or local store"]
   Backend --> BigQuery["BigQuery curated public data"]
@@ -47,6 +63,47 @@ flowchart LR
   Backend --> Voice["Google STT/TTS -> Sarvam"]
   Backend --> Satellite["Earth Engine"]
   Backend --> Alerts["Authkey SMS + voice, WhatsApp templates"]
+```
+
+## Google Cloud And Service Usage
+
+| Hackathon capability | How Kisan Alert uses it |
+|---|---|
+| Gemini API / Google AI Studio | Fallback LLM and Gemini Vision path for advisory and image diagnosis when Vertex route is unavailable. |
+| Vertex AI | Primary GenAI route for advisory/vision in live mode. We use strong prompts plus farmer/context data, not decorative AI responses. |
+| Cloud Speech-to-Text | Transcribes farmer voice notes/call transcripts when Google integrations are enabled. |
+| Cloud Text-to-Speech | Generates spoken replies in the farmer language for app/API responses. |
+| Dialogflow CX | Optional intent/router layer for WhatsApp/SMS/voice text. Backend still validates obvious farmer intents so incomplete Dialogflow setup cannot break flow. |
+| Translation API | Detects farmer language and translates text when needed; Sarvam is fallback. |
+| Gemini multimodal / Vertex Vision | Crop-health diagnosis and soil-card extraction path. |
+| Google Maps / Geocoding | Farm location capture/geocoding route; OSM Nominatim can be fallback. |
+| Earth Engine | Farm satellite indices: NDVI, NDWI, NDMI, EVI and NDRE for water/vegetation stress. |
+| BigQuery | Curated public datasets for rainfall history, dry-spell/heavy-rain events, crop production history and district context. |
+| Firestore | Live farmer registry, conversation memory, provider routes, tickets and alert run records. |
+| Cloud Run | Backend deployment target. |
+| Pub/Sub + Cloud Scheduler | Daily proactive alert trigger. |
+| WhatsApp/SMS/voice | Authkey/Twilio-compatible channel adapters; Authkey is used for outbound SMS and voice calls. |
+| Public data | data.gov.in IMD rainfall, Maharain dry/heavy rainfall, crop APY/DES datasets and aspirational districts. |
+
+## Core Feature Flow
+
+```mermaid
+sequenceDiagram
+  participant F as Farmer
+  participant C as App/WhatsApp/SMS/Voice
+  participant API as FastAPI
+  participant M as Firestore memory
+  participant G as BigQuery + Earth Engine + Weather
+  participant AI as Vertex/Gemini
+  participant A as Authkey/Twilio
+  F->>C: text, voice, photo or location
+  C->>API: normalized channel request
+  API->>M: identify farmer and fetch prior context
+  API->>G: pull weather, public data and satellite signals when needed
+  API->>AI: generate advisory/diagnosis with context
+  API->>M: save captured facts and conversation
+  API->>C: localized text + optional audio
+  API->>A: proactive SMS/voice/WhatsApp alerts when risk is high
 ```
 
 ## Provider Fallbacks
@@ -140,6 +197,7 @@ STORAGE_BUCKET=
 PUBSUB_ALERT_TOPIC=kisan-alerts
 DIALOGFLOW_ROUTING_ENABLED=false
 DIALOGFLOW_AGENT_ID=
+DIALOGFLOW_ENVIRONMENT_ID=
 DIALOGFLOW_LOCATION=global
 AUTHKEY_API_KEY=
 AUTHKEY_SMS_SENDER=
@@ -151,7 +209,36 @@ IMD_API_KEY=
 OPEN_METEO_BASE_URL=https://api.open-meteo.com/v1/forecast
 ```
 
-`DIALOGFLOW_AGENT_ID` must be the Dialogflow CX agent UUID from Google Cloud Console, not only the display name. In the console, open Dialogflow CX, select the `kisanai` agent, then copy the ID from the agent details or the agent resource path.
+`DIALOGFLOW_AGENT_ID` must be the Dialogflow CX agent UUID from Google Cloud Console, not only the display name.
+
+How to get Dialogflow values:
+
+1. Open Google Cloud Console -> Dialogflow CX.
+2. Select project `kisanai-501120` and open the `kisanai` CX agent.
+3. Open Agent Settings / General.
+4. Copy the agent resource name. It looks like `projects/PROJECT_ID/locations/LOCATION/agents/AGENT_UUID`.
+5. Put only `AGENT_UUID` in `DIALOGFLOW_AGENT_ID`.
+6. Put the same location in `DIALOGFLOW_LOCATION`, for example `global` or `asia-south1`.
+7. `DIALOGFLOW_ENVIRONMENT_ID` is optional. Leave it empty for draft/latest agent. If you publish an environment, open Manage -> Environments and copy the environment UUID into this field.
+8. After Cloud Run deploy, configure the Dialogflow fulfillment/webhook URL as `https://SERVICE_URL/api/v1/dialogflow/webhook`.
+
+CLI alternative after `gcloud init`:
+
+```bash
+gcloud alpha dialogflow cx agents list --location=global --project=kisanai-501120
+gcloud alpha dialogflow cx environments list --location=global --agent=AGENT_UUID --project=kisanai-501120
+```
+
+## AI Brain And Fine-Tuning
+
+No Vertex fine-tuning is required for the current prototype. The recommended approach is retrieval/context grounding:
+
+1. Store farmer profile, crop facts and conversation memory in Firestore.
+2. Store public rainfall/crop/dry-spell datasets in BigQuery.
+3. Fetch weather/satellite/public-data context per request.
+4. Send compact context to Vertex AI/Gemini with a strict agricultural advisory prompt.
+
+Fine-tuning can be considered later only after collecting enough expert-validated advisory examples. For hackathon judging, contextual Vertex/Gemini calls are safer, faster and easier to explain than a lightly trained model.
 
 ## Local And Live Setup
 
@@ -211,7 +298,7 @@ cd react_native_chat_app && npm run typecheck
 Latest verified result:
 
 ```text
-49 passed, 1 warning
+51 passed, 1 warning
 React Native typecheck passed
 ```
 
@@ -339,6 +426,8 @@ Useful endpoints:
 |---|---|
 | `GET /health` | Boolean service health. |
 | `GET /admin` | Provider route/admin UI. |
+| `GET /api/v1/farmers` | Admin farmer list. |
+| `GET /api/v1/expert/tickets` | Admin expert ticket queue. |
 | `POST /api/v1/chat/message` | App text/image/audio/location chat. |
 | `POST /api/v1/weather/context` | IMD/Open-Meteo weather context. |
 | `POST /api/v1/data/context` | BigQuery public-data context. |
@@ -391,6 +480,16 @@ Configure after deployment:
 - Authkey/generic SMS: `https://SERVICE_URL/api/v1/sms/webhook`
 - Authkey/generic voice callback: `https://SERVICE_URL/api/v1/calls/webhook`
 
+Admin demo after deployment:
+
+1. Open `https://SERVICE_URL/admin`.
+2. Check service health and switch providers if needed.
+3. Click `Create Demo Farmer` if no test farmer exists.
+4. Choose a dry-spell or heat-stress scenario.
+5. Click `Run Simulation`.
+6. The panel calls `/api/v1/alerts/run-daily`; urgent dry-spell risk produces WhatsApp/SMS/voice-call channels based on the alert priority policy. If `AUTHKEY_SEND_ENABLED=false`, results show dry-run/skipped status without sending.
+7. Crop photo diagnosis creates expert tickets; use the Expert Tickets panel to assign/respond/update status.
+
 Frontend web export:
 
 ```bash
@@ -407,6 +506,27 @@ Deploy `react_native_chat_app/dist/` to Firebase Hosting, Cloud Storage static h
 - Maharain fetch uses `--insecure` because its certificate chain failed local Python CA verification.
 - Groundwater, soil-health baseline and agromet advisory rows should be loaded next for stronger recommendation precision.
 - `.venv`, `.venv-*`, `.env`, `Details.txt`, `local-secrets/`, `node_modules/`, `.expo/` and build outputs are ignored. Only `.env.example` should be committed.
+
+## Evaluation Readiness
+
+| Criteria | Readiness |
+|---|---|
+| Problem-solution fit, 20% | Directly covers smart crop recommendation, dry-spell/water advisory and crop-health expert follow-up for small farmers. |
+| AI/technical execution, 25% | AI is active in advisory, language, voice, vision and context synthesis. Backend runs end-to-end locally and with Google provider configuration. |
+| Deployability/scalability, 25% | Cloud Run, Firestore, BigQuery, Pub/Sub/Scheduler and provider switching are in place. District rollout can reuse regional cached datasets. |
+| Inclusivity/accessibility, 15% | Indic language text, voice input/output, SMS, WhatsApp-style and voice-call flows support low-literacy/low-connectivity users. |
+| Impact potential, 10% | Can scale regionally: one public-data/weather/satellite context can support many farmers in the same district/taluka. |
+| Presentation clarity, 5% | `/admin`, `/docs`, README, demo farmer, and alert simulation give a 5-minute non-technical walkthrough path. |
+
+## Track 4 Coverage
+
+| Required component | Implementation |
+|---|---|
+| Smart crop recommendation using satellite and soil data | `/api/v1/recommendations/crop` combines farmer soil profile, groundwater, rainfall/public data and Earth Engine satellite signals. |
+| Real-time advisory and dry-spell alerts | `/api/v1/advisories/dry-spell`, `/api/v1/alerts/run-daily`, IMD/Open-Meteo weather, alert priority policy, Authkey SMS/voice delivery. |
+| Crop health logging via photo/voice | `/api/v1/chat/message`, `/api/v1/diagnosis/log`, Gemini/Vertex Vision and expert tickets. |
+| Rythu Seva Kendra/expert follow-up | Expert ticket creation, assignment, status updates and farmer notification logs. |
+| Voice-and-SMS in Indic languages | Google STT/TTS, Translation API, Sarvam fallback, SMS and voice-call adapters. |
 
 ## IP Boundary
 
