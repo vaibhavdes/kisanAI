@@ -70,6 +70,12 @@ pip install -e ".[dev]"
 DATA_STORE_PROVIDER=local ENABLE_GOOGLE_INTEGRATIONS=false uvicorn app.main:app --reload --port 8080
 ```
 
+If you are using the existing Google-enabled virtual environment:
+
+```bash
+DATA_STORE_PROVIDER=local ENABLE_GOOGLE_INTEGRATIONS=false .venv-google/bin/uvicorn app.main:app --host 127.0.0.1 --port 8080
+```
+
 Open:
 
 - API docs: http://127.0.0.1:8080/docs
