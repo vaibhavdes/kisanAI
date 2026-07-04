@@ -43,7 +43,7 @@ Kisan Alert is a FastAPI + React Native hackathon prototype for small and margin
 - Data: Firestore for runtime store, BigQuery for curated public datasets.
 - Weather: IMD planned primary, Open-Meteo fallback.
 - Maps/geocoding: Google Maps, OSM fallback.
-- Channels: Twilio, Authkey, WhatsApp Business style webhooks, SMS and voice-call IVR.
+- Channels: Authkey outbound SMS/voice, Authkey/Twilio WhatsApp-style webhooks, SMS and voice-call IVR.
 - Deployment: Docker, Cloud Run, Cloud Scheduler, Pub/Sub and Secret Manager.
 
 ## Channel Matrix
@@ -91,7 +91,7 @@ flowchart LR
   Backend --> Weather["IMD / Open-Meteo\nforecast context"]
   Backend --> BigQuery["BigQuery\nrainfall + soil + groundwater + agromet"]
   Backend --> EarthEngine["Earth Engine\nsatellite signals"]
-  Backend --> Delivery["Twilio / Authkey\nWhatsApp + SMS + voice"]
+  Backend --> Delivery["Authkey first\nSMS + voice + WhatsApp templates"]
   Admin["Admin UI /admin"] --> Backend
 ```
 

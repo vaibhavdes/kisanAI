@@ -56,14 +56,63 @@ gs://kisanai-501120-kisan-ai-public-data/
 |---|---|---|
 | IMD API Platform | https://api.imd.gov.in/ | Current forecast, warnings, nowcast, weather products when API access is available. |
 | IMD Agromet Advisories | https://mausam.imd.gov.in/responsive/agromet_adv_ser_state_current.php | District/state agromet bulletins, crop-weather advisory signal, official alert wording. |
-| IMD Data Service Portal | https://dsp.imdpune.gov.in/ | Historical meteorological observations, climate tables, gridded climatological data. |
+| IMD Free Data Access | https://dsp.imdpune.gov.in/home_freedataaccess.php | All-India monthly/seasonal rainfall series and other free climate series. |
+| IMD Gridded Climatology | https://dsp.imdpune.gov.in/home_gridded_climatology.php | Monthly gridded rainfall climatology, including 0.25 x 0.25 degree rainfall. |
+| IMD Station Normals | https://dsp.imdpune.gov.in/home_normals.php | Station climatological normals; useful for nearest-station baseline where district data is missing. |
+| IMD Data Service Portal | https://dsp.imdpune.gov.in/ | Historical meteorological observations, climate tables, free series and gridded climatological data. |
 | UPAg | https://upag.gov.in/ | Official agriculture statistics portal for crop area, production, and yield. |
 | data.gov.in APIs | https://www.data.gov.in/apis | Public API access to government datasets when resource IDs are available. |
 | data.gov.in Catalog | https://www.data.gov.in/catalogs | Dataset discovery before manual download or API integration. |
 | Soil Health Card | https://soilhealth.dac.gov.in/ | Soil pH, NPK, organic carbon, micronutrients when farmer image/data is available. |
 | India-WRIS | https://indiawris.gov.in/wris/ | Water resources and groundwater context. |
-| Google Earth Engine | https://earthengine.google.com/ | Satellite NDVI/NDWI and farm vegetation/water stress. |
+| Earth Engine Data Catalog | https://developers.google.com/earth-engine/datasets | Dataset catalog for satellite and climate signals. |
+| Sentinel-2 Surface Reflectance | https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR_HARMONIZED | Farm-level NDVI, NDWI, NDMI, NDRE where cloud-free imagery is available. |
+| MODIS MOD13Q1 Vegetation Indices | https://developers.google.com/earth-engine/datasets/catalog/MODIS_061_MOD13Q1 | 16-day NDVI/EVI backup when Sentinel imagery is cloudy or too sparse. |
+| CHIRPS Daily Rainfall | https://developers.google.com/earth-engine/datasets/catalog/UCSB-CHG_CHIRPS_DAILY | Long rainfall time series for drought/dry-spell context when official district rows are unavailable. |
+| SMAP L4 Soil Moisture | https://developers.google.com/earth-engine/datasets/catalog/NASA_SMAP_SPL4SMGP_008 | Surface/root-zone soil moisture and wetness signals. |
 | Open-Meteo | https://open-meteo.com/en/docs | Free fallback weather forecast with current/hourly/daily, ET0, soil moisture, soil temperature. |
+
+## Source To Table Mapping
+
+| Priority | Dataset | Primary source | Fallback/source helper | BigQuery table | Why it matters |
+|---|---|---|---|---|---|
+| 1 | District or nearest-grid rainfall normals | IMD gridded climatology / DSP | CHIRPS via Earth Engine, if official rows are delayed | `district_rainfall_normals` | Crop suitability and seasonal rainfall baseline. |
+| 2 | Recent/daily rainfall observations | IMD API or DSP exports | CHIRPS daily rainfall through Earth Engine | `district_rainfall_daily` | Dry-spell detection and irrigation timing. |
+| 3 | Current forecast, wind, humidity, ET0 | IMD API when approved | Open-Meteo Forecast API | Not stored by default; cached/runtime weather context | Real-time advisory and alert generation. |
+| 4 | Official agromet bulletins | IMD agromet district/state bulletins | Manual bulletin upload until API is available | `agromet_advisory` | Grounds Gemini/Vertex advice in official advisory wording. |
+| 5 | Groundwater depth/status | India-WRIS / CGWB official exports | Manual state/district CSV export | `district_groundwater_level` | Penalizes high-water crops and flags irrigation risk. |
+| 6 | Soil pH/NPK/organic carbon | Farmer soil card OCR + Soil Health Card portal exports | District/block manual summary CSV | `soil_health_summary` | Crop recommendation and fertilizer guidance. |
+| 7 | Crop area/production/yield | UPAg official statistics | data.gov.in catalog/API resource if available | `crop_production_history` | Regional crop performance signal for recommendation. |
+| 8 | Farm vegetation/water stress | Earth Engine Sentinel-2 | MODIS vegetation index backup | Runtime Earth Engine response, optionally exported later | NDVI/NDWI/NDMI/NDRE crop health and water stress. |
+
+## Exact Loading Order
+
+1. `district_rainfall_normals`
+   - Download monthly rainfall climatology from IMD DSP gridded climatology or free-data tables.
+   - Normalize to `state,district,month,normal_rainfall_mm`.
+   - Load with `source_key=rainfall_normals`.
+2. `district_rainfall_daily`
+   - Use IMD API once approved for daily district/rainfall products, or export observations from DSP.
+   - For demo fallback, generate district-level daily aggregates from CHIRPS through Earth Engine.
+   - Normalize to `state,district,observation_date,rainfall_mm`.
+   - Load with `source_key=rainfall_daily`.
+3. `district_groundwater_level`
+   - Download district/block groundwater level/status from India-WRIS or CGWB/state reports.
+   - Normalize to `state,district,block,observation_date,groundwater_depth_m,category`.
+   - Load with `source_key=groundwater_level`.
+4. `soil_health_summary`
+   - Prefer farmer-level soil-card OCR results during runtime.
+   - For missing farmer cards, load district/block summaries exported from Soil Health Card/state soil datasets.
+   - Normalize to `state,district,block,village,soil_type,ph,organic_carbon,nitrogen,phosphorus,potassium,micronutrients`.
+   - Load with `source_key=soil_health_summary`.
+5. `crop_production_history`
+   - Download crop area/production/yield from UPAg or the matching data.gov.in catalog resource.
+   - Normalize to `state,district,crop,crop_year,season,area_hectare,production_tonne,yield_kg_per_hectare`.
+   - Load with `source_key=crop_production_history`.
+6. `agromet_advisory`
+   - Download current and past IMD agromet bulletins.
+   - Normalize PDF/text bulletin rows to `state,district,bulletin_date,language,crop,advisory_text,risk_tags`.
+   - Load with `source_key=agromet_advisory`.
 
 ## Ingestion Flow
 
