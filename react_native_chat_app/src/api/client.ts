@@ -1,6 +1,9 @@
 import type { ChatPayload, ChatResponse } from "@/types/chat";
+import { Platform } from "react-native";
 
-const fallbackUrl = process.env.EXPO_PUBLIC_API_URL || "http://10.0.2.2:8080";
+const fallbackUrl =
+  process.env.EXPO_PUBLIC_API_URL ||
+  (Platform.OS === "web" ? "http://127.0.0.1:8080" : "http://10.0.2.2:8080");
 
 export class ApiError extends Error {
   constructor(

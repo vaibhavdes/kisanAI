@@ -151,16 +151,29 @@ IMD_API_KEY=
 OPEN_METEO_BASE_URL=https://api.open-meteo.com/v1/forecast
 ```
 
-## Local Setup
+`DIALOGFLOW_AGENT_ID` must be the Dialogflow CX agent UUID from Google Cloud Console, not only the display name. In the console, open Dialogflow CX, select the `kisanai` agent, then copy the ID from the agent details or the agent resource path.
 
-Backend:
+## Local And Live Setup
+
+Install backend dependencies once:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 pip install -e ".[dev]"
-DATA_STORE_PROVIDER=local ENABLE_GOOGLE_INTEGRATIONS=false uvicorn app.main:app --host 127.0.0.1 --port 8080
+```
+
+Local/offline backend, no Google/provider calls:
+
+```bash
+DATA_STORE_PROVIDER=local ENABLE_GOOGLE_INTEGRATIONS=false .venv-google/bin/uvicorn app.main:app --host 127.0.0.1 --port 8080
+```
+
+Live GCP/provider backend using `.env`, Firestore, BigQuery, Google/Sarvam/Authkey config:
+
+```bash
+DATA_STORE_PROVIDER=firestore ENABLE_GOOGLE_INTEGRATIONS=true .venv-google/bin/uvicorn app.main:app --host 127.0.0.1 --port 8080
 ```
 
 Frontend:
@@ -171,6 +184,8 @@ npm install
 npm run typecheck
 EXPO_PUBLIC_API_URL=http://127.0.0.1:8080 npm run web -- --port 8081
 ```
+
+For browser testing, always use `EXPO_PUBLIC_API_URL=http://127.0.0.1:8080`. Android emulator uses `http://10.0.2.2:8080` when `EXPO_PUBLIC_API_URL` is not set.
 
 Android emulator:
 
