@@ -115,6 +115,17 @@ AUTHKEY_SMS_SENDER=${AUTHKEY_SMS_SENDER:-},\
 AUTHKEY_WHATSAPP_TEMPLATE_ID=${AUTHKEY_WHATSAPP_TEMPLATE_ID:-},\
 AUTHKEY_WHATSAPP_MEDIA_TEMPLATE_ID=${AUTHKEY_WHATSAPP_MEDIA_TEMPLATE_ID:-},\
 AUTHKEY_SEND_ENABLED=${AUTHKEY_SEND_ENABLED:-false},\
+TWILIO_WHATSAPP_FROM=${TWILIO_WHATSAPP_FROM:-whatsapp:+14155238886},\
+TWILIO_MESSAGING_SERVICE_SID=${TWILIO_MESSAGING_SERVICE_SID:-},\
+TWILIO_CONTENT_SID=${TWILIO_CONTENT_SID:-},\
+TWILIO_STATUS_CALLBACK_URL=${TWILIO_STATUS_CALLBACK_URL:-},\
+TWILIO_PUBLIC_BASE_URL=${TWILIO_PUBLIC_BASE_URL:-},\
+TWILIO_MEDIA_BUCKET=${TWILIO_MEDIA_BUCKET:-${STORAGE_BUCKET}},\
+TWILIO_MEDIA_PUBLIC_BASE_URL=${TWILIO_MEDIA_PUBLIC_BASE_URL:-},\
+TWILIO_MEDIA_SIGNED_URL_MINUTES=${TWILIO_MEDIA_SIGNED_URL_MINUTES:-15},\
+TWILIO_MEDIA_MEMORY_TTL_SECONDS=${TWILIO_MEDIA_MEMORY_TTL_SECONDS:-600},\
+TWILIO_VALIDATE_WEBHOOKS=${TWILIO_VALIDATE_WEBHOOKS:-false},\
+TWILIO_ENABLE_LIVE_SEND=${TWILIO_ENABLE_LIVE_SEND:-false},\
 SARVAM_API_BASE_URL=${SARVAM_API_BASE_URL:-https://api.sarvam.ai},\
 SARVAM_STT_MODEL=${SARVAM_STT_MODEL:-saaras:v3},\
 SARVAM_TRANSLATE_MODEL=${SARVAM_TRANSLATE_MODEL:-mayura:v1},\
@@ -130,6 +141,9 @@ for env_name in \
   GEMINI_API_KEY \
   SARVAM_API_KEY \
   AUTHKEY_API_KEY \
+  TWILIO_ACCOUNT_SID \
+  TWILIO_AUTH_TOKEN \
+  TWILIO_CONTENT_VARIABLES \
   MAPS_API_KEY \
   IMD_API_KEY \
   SMS_PROVIDER_API_KEY \
@@ -159,11 +173,21 @@ SERVICE_URL=$(gcloud run services describe "${SERVICE_NAME}" \
   --region "${REGION}" \
   --format="value(status.url)")
 
+if [[ -z "${TWILIO_PUBLIC_BASE_URL:-}" && -z "${TWILIO_STATUS_CALLBACK_URL:-}" ]]; then
+  gcloud run services update "${SERVICE_NAME}" \
+    --region "${REGION}" \
+    --update-env-vars "TWILIO_PUBLIC_BASE_URL=${SERVICE_URL}" \
+    --quiet >/dev/null
+  echo "Set TWILIO_PUBLIC_BASE_URL to Cloud Run URL for Twilio callbacks and signature validation."
+fi
+
 echo
 echo "Cloud Run URL: ${SERVICE_URL}"
 echo "Health: ${SERVICE_URL}/health"
 echo "Admin: ${SERVICE_URL}/admin"
 echo "Dialogflow webhook: ${SERVICE_URL}/api/v1/dialogflow/webhook"
 echo "WhatsApp webhook: ${SERVICE_URL}/api/v1/whatsapp/webhook"
+echo "Twilio WhatsApp webhook: ${SERVICE_URL}/api/v1/twilio/whatsapp"
+echo "Twilio status callback: ${SERVICE_URL}/api/v1/twilio/status"
 echo "SMS webhook: ${SERVICE_URL}/api/v1/sms/webhook"
 echo "Voice-call webhook: ${SERVICE_URL}/api/v1/calls/webhook"

@@ -124,6 +124,14 @@ class WhatsAppService:
         if intent == "voice_message":
             return self._voice_intake_response(farmer_id, language, text or "", transcript, payload)
 
+        if intent == "document_message":
+            return WhatsAppWebhookResponse(
+                intent=intent,
+                reply=phrase("whatsapp_document_received", language),
+                template_name="document_received",
+                transcript=transcript,
+            )
+
         if intent in {"greeting", "general_advisory"}:
             farmer = store.get_farmer(farmer_id)
             name = self._display_name(farmer.name if farmer else "Farmer", language)
@@ -240,7 +248,15 @@ class WhatsAppService:
         )
 
     def _intent_with_context(self, farmer_id: str, text: str | None, intent: str) -> str:
-        if intent in {"location_update", "voice_message", "crop_diagnosis", "greeting", "identity_query", "weather_query"}:
+        if intent in {
+            "location_update",
+            "voice_message",
+            "document_message",
+            "crop_diagnosis",
+            "greeting",
+            "identity_query",
+            "weather_query",
+        }:
             return intent
         previous_intent = self._last_active_intent(farmer_id)
         if previous_intent == "crop_recommendation" and (
@@ -294,6 +310,7 @@ class WhatsAppService:
                     transcript=text,
                     audio_base64=payload.audio_base64 if payload else None,
                     audio_uri=payload.audio_uri if payload else None,
+                    audio_mime_type=payload.audio_mime_type if payload else "audio/wav",
                     language=language,
                 ),
             )

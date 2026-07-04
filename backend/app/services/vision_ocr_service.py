@@ -1,5 +1,6 @@
 import base64
 import json
+from binascii import Error as BinasciiError
 from typing import Any
 
 import requests
@@ -173,16 +174,29 @@ If a value is not visible, return null. Farmer language: {payload.language}.
 
     def _load_optional_image(self, image_base64: str | None, image_uri: str | None) -> bytes | None:
         if image_base64:
-            return base64.b64decode(image_base64)
+            try:
+                return base64.b64decode(image_base64, validate=True)
+            except (BinasciiError, ValueError) as exc:
+                raise VisionProviderUnavailable("Invalid image_base64 payload.") from exc
         if not image_uri:
             return None
         if image_uri.startswith("gs://"):
             return self._load_gcs_image(image_uri)
         if image_uri.startswith(("http://", "https://")):
-            response = requests.get(image_uri, timeout=30)
-            response.raise_for_status()
-            return response.content
+            try:
+                response = requests.get(image_uri, auth=self._twilio_media_auth(image_uri), timeout=30)
+                response.raise_for_status()
+                return response.content
+            except requests.RequestException as exc:
+                raise VisionProviderUnavailable(f"Image media download failed: {exc}") from exc
         raise VisionProviderUnavailable("Only base64, gs://, http://, and https:// image inputs are supported.")
+
+    def _twilio_media_auth(self, uri: str) -> tuple[str, str] | None:
+        if "api.twilio.com" not in uri:
+            return None
+        if not settings.twilio_account_sid or not settings.twilio_auth_token:
+            return None
+        return settings.twilio_account_sid, settings.twilio_auth_token
 
     def _load_gcs_image(self, image_uri: str) -> bytes:
         from google.cloud import storage

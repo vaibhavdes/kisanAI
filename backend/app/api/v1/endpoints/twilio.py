@@ -1,12 +1,19 @@
 from html import escape
 from urllib.parse import parse_qs
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 
-from app.models.schemas import SmsWebhookRequest, VoiceCallWebhookRequest, WhatsAppWebhookRequest
+from app.models.schemas import (
+    ChannelReceiptRequest,
+    ChannelReceiptResponse,
+    SmsWebhookRequest,
+    VoiceCallWebhookRequest,
+)
 from app.services.call_service import CallService
+from app.services.channel_receipt_service import ChannelReceiptService
 from app.services.sms_service import SmsService
+from app.services.twilio_whatsapp_service import TwilioWhatsAppService, twilio_media_store
 from app.services.whatsapp_service import WhatsAppService
 
 router = APIRouter()
@@ -15,29 +22,32 @@ router = APIRouter()
 @router.post("/whatsapp")
 async def twilio_whatsapp_webhook(request: Request) -> Response:
     form = await _form_data(request)
-    media_type, media_url, media_content_type = _twilio_media(form)
+    service = TwilioWhatsAppService()
+    if not service.validate_webhook(str(request.url), form, request.headers.get("X-Twilio-Signature")):
+        raise HTTPException(status_code=403, detail="Invalid Twilio signature")
+
     response = WhatsAppService().handle_message(
-        WhatsAppWebhookRequest(
-            from_phone=_clean_channel_phone(_first(form, "From")),
-            message_id=_first(form, "MessageSid") or _first(form, "SmsMessageSid"),
-            text=_first(form, "Body") or None,
-            media_uri=media_url,
-            media_mime_type=media_content_type,
-            media_type=media_type,
-            latitude=_float_or_none(_first(form, "Latitude")),
-            longitude=_float_or_none(_first(form, "Longitude")),
-            location_label=_first(form, "Label") or _first(form, "Address"),
-            language=_first(form, "Language") or None,
-        ),
+        service.inbound_payload(form),
         channel="whatsapp",
         send_outbound=False,
     )
-    return _messaging_twiml(response.reply)
+    base_url = service.public_base_url(str(request.base_url))
+    return Response(
+        content=service.twiml_response(
+            response,
+            base_url=base_url,
+            status_callback_url=service.status_callback_url(base_url),
+        ),
+        media_type="text/xml",
+    )
 
 
 @router.post("/sms")
 async def twilio_sms_webhook(request: Request) -> Response:
     form = await _form_data(request)
+    service = TwilioWhatsAppService()
+    if not service.validate_webhook(str(request.url), form, request.headers.get("X-Twilio-Signature")):
+        raise HTTPException(status_code=403, detail="Invalid Twilio signature")
     response = SmsService().handle_message(
         SmsWebhookRequest(
             from_phone=_clean_channel_phone(_first(form, "From")),
@@ -51,6 +61,9 @@ async def twilio_sms_webhook(request: Request) -> Response:
 @router.post("/voice")
 async def twilio_voice_webhook(request: Request) -> Response:
     form = await _form_data(request)
+    service = TwilioWhatsAppService()
+    if not service.validate_webhook(str(request.url), form, request.headers.get("X-Twilio-Signature")):
+        raise HTTPException(status_code=403, detail="Invalid Twilio signature")
     language = _first(form, "Language") or "hi-IN"
     response = CallService().handle_call(
         VoiceCallWebhookRequest(
@@ -64,35 +77,51 @@ async def twilio_voice_webhook(request: Request) -> Response:
     return _voice_twiml(response.spoken_reply, language=language)
 
 
+@router.post("/status", response_model=ChannelReceiptResponse)
+async def twilio_status_callback(request: Request) -> ChannelReceiptResponse:
+    form = await _form_data(request)
+    service = TwilioWhatsAppService()
+    if not service.validate_webhook(str(request.url), form, request.headers.get("X-Twilio-Signature")):
+        raise HTTPException(status_code=403, detail="Invalid Twilio signature")
+    channel = "whatsapp" if (
+        _first(form, "To").startswith("whatsapp:")
+        or _first(form, "From").startswith("whatsapp:")
+    ) else "sms"
+    return ChannelReceiptService().save_receipt(
+        ChannelReceiptRequest(
+            provider="twilio",
+            channel=channel,
+            provider_message_id=_first(form, "MessageSid") or _first(form, "SmsSid") or None,
+            message_id=_first(form, "MessageSid") or _first(form, "SmsSid") or None,
+            phone=service.clean_channel_phone(_first(form, "To") or _first(form, "From")),
+            status=_first(form, "MessageStatus") or _first(form, "SmsStatus") or "unknown",
+            event_type="twilio_status_callback",
+            raw_payload=form,
+        ),
+        channel=channel,
+    )
+
+
+@router.get("/media/{media_id}")
+def twilio_media(media_id: str) -> Response:
+    media = twilio_media_store.get(media_id)
+    if not media:
+        raise HTTPException(status_code=404, detail="Media not found")
+    return Response(
+        content=media.content,
+        media_type=media.content_type,
+        headers={"Content-Disposition": f'inline; filename="{media.filename}"'},
+    )
+
+
 async def _form_data(request: Request) -> dict[str, str]:
     body = (await request.body()).decode("utf-8")
     parsed = parse_qs(body, keep_blank_values=True)
     return {key: values[-1] for key, values in parsed.items()}
 
 
-def _twilio_media(form: dict[str, str]) -> tuple[str | None, str | None, str | None]:
-    media_url = _first(form, "MediaUrl0")
-    media_content_type = _first(form, "MediaContentType0")
-    if not media_url:
-        return None, None, None
-    if (media_content_type or "").startswith("image/"):
-        return "image", media_url, media_content_type
-    if (media_content_type or "").startswith("audio/"):
-        return "audio", None, media_content_type
-    return "document", media_url, media_content_type
-
-
 def _first(form: dict[str, str], key: str) -> str:
     return (form.get(key) or "").strip()
-
-
-def _float_or_none(value: str) -> float | None:
-    if not value:
-        return None
-    try:
-        return float(value)
-    except ValueError:
-        return None
 
 
 def _clean_channel_phone(value: str) -> str:
@@ -109,7 +138,7 @@ def _voice_twiml(message: str, *, language: str) -> Response:
     safe_language = escape(language)
     xml = (
         '<?xml version="1.0" encoding="UTF-8"?>'
-        '<Response>'
+        "<Response>"
         f'<Gather input="speech dtmf" action="/api/v1/twilio/voice" method="POST" language="{safe_language}">'
         f"<Say>{safe_message}</Say>"
         "</Gather>"

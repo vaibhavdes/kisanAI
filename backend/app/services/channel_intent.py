@@ -12,7 +12,10 @@ def detect_farmer_intent(
     if normalized_media_type in {"audio", "voice"}:
         return "voice_message"
 
-    if media_uri or normalized_media_type in {"image", "photo", "document"}:
+    if normalized_media_type == "document":
+        return "document_message"
+
+    if media_uri or normalized_media_type in {"image", "photo"}:
         return "crop_diagnosis"
 
     normalized = (text or "").strip().lower()

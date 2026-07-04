@@ -31,6 +31,7 @@ Authkey / WhatsApp:
 
 Twilio:
   WhatsApp inbound:    ${SERVICE_URL}/api/v1/twilio/whatsapp
+  Status callback:     ${SERVICE_URL}/api/v1/twilio/status
   SMS inbound:         ${SERVICE_URL}/api/v1/twilio/sms
   Voice inbound:       ${SERVICE_URL}/api/v1/twilio/voice
 

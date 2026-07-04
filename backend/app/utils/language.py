@@ -75,6 +75,9 @@ PHRASES = {
         "kn-IN": "ತಜ್ಞರು ಪರಿಶೀಲಿಸಲು app ಅಥವಾ WhatsApp ನಲ್ಲಿ ಬೆಳೆ ಸ್ಪಷ್ಟ ಫೋಟೋ ಕಳುಹಿಸಿ.",
         "gu-IN": "નિષ્ણાત તપાસ માટે app અથવા WhatsApp પર પાકનો સ્પષ્ટ ફોટો મોકલો.",
     },
+    "whatsapp_document_received": {
+        "en-IN": "Document received. For crop disease help, send a clear crop photo. For soil-card details, use the app upload flow.",
+    },
     "sms_crop": {
         "en-IN": "For crop recommendation, tell me your soil type if you know it, water availability, and village/pincode. You can simply say: black soil, medium water, near Pune.",
         "hi-IN": "फसल सुझाव के लिए अगर पता हो तो मिट्टी का प्रकार, पानी की उपलब्धता और गांव/पिनकोड बताएं। ऐसे लिख सकते हैं: काली मिट्टी, मध्यम पानी, पुणे के पास।",

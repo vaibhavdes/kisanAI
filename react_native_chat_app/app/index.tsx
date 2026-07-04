@@ -321,6 +321,10 @@ function ChatScreen({
 
     if (result.canceled || !result.assets[0]) return;
     const asset = result.assets[0];
+    if (!asset.base64) {
+      Alert.alert("Photo could not be sent", "Please choose or capture the photo again so it can be uploaded.");
+      return;
+    }
     const caption = input.trim() || "Crop photo for diagnosis";
     setInput("");
     await sendPayload(
@@ -335,8 +339,7 @@ function ChatScreen({
         from_phone: phone,
         text: caption,
         media_type: "image",
-        media_base64: asset.base64 ?? undefined,
-        media_uri: asset.base64 ? undefined : asset.uri,
+        media_base64: asset.base64,
         media_mime_type: asset.mimeType || "image/jpeg",
       },
     );
@@ -366,7 +369,13 @@ function ChatScreen({
       return;
     }
     const typedCaption = input.trim();
-    const base64 = await uriToBase64(uri);
+    let base64: string;
+    try {
+      base64 = await uriToBase64(uri);
+    } catch {
+      Alert.alert("Voice note failed", "The recording could not be prepared for upload. Please record again.");
+      return;
+    }
     setInput("");
     await sendPayload(
       {
@@ -786,13 +795,15 @@ async function uriToBase64(uri: string) {
   return FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
 }
 
-function audioMimeType(uri: string) {
+function audioMimeType(uri: string, fallback = "audio/mp4") {
   const lower = uri.toLowerCase();
+  if (lower.startsWith("blob:")) return fallback;
   if (lower.endsWith(".wav")) return "audio/wav";
   if (lower.endsWith(".mp3")) return "audio/mpeg";
   if (lower.endsWith(".ogg") || lower.endsWith(".oga")) return "audio/ogg";
-  if (lower.endsWith(".m4a") || lower.endsWith(".mp4")) return "audio/mp4";
-  return "audio/mpeg";
+  if (lower.endsWith(".m4a") || lower.endsWith(".mp4") || lower.endsWith(".aac")) return "audio/mp4";
+  if (lower.endsWith(".webm")) return "audio/webm";
+  return fallback;
 }
 
 function voiceDurationLabel(durationMillis: number) {

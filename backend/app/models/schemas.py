@@ -536,6 +536,7 @@ class VoiceIntakeRequest(BaseModel):
     farmer_id: str
     audio_uri: str | None = None
     audio_base64: str | None = None
+    audio_mime_type: str = "audio/wav"
     transcript: str | None = None
     language: str | None = None
 
