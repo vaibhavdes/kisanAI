@@ -2,6 +2,14 @@
 
 Expo React Native farmer chat prototype for Android and web.
 
+This app is the farmer-facing chat frontend. It calls the backend app endpoint:
+
+```text
+POST /api/v1/chat/message
+```
+
+Provider webhooks such as `/api/v1/whatsapp/webhook` and `/api/v1/twilio/whatsapp` are for WhatsApp providers only, not for this frontend app.
+
 ## Run
 
 Start the backend:
@@ -20,6 +28,8 @@ npm run typecheck
 npm run android
 ```
 
+For Android emulator, the default backend URL is `http://10.0.2.2:8080`.
+
 For web:
 
 ```bash
@@ -32,7 +42,7 @@ Static web export check:
 EXPO_PUBLIC_API_URL=http://127.0.0.1:8080 npm run export:web
 ```
 
-For Android emulator, the default API URL is `http://10.0.2.2:8080`. For a physical Android device, set `EXPO_PUBLIC_API_URL` to your machine LAN IP, for example:
+For a physical Android device, set `EXPO_PUBLIC_API_URL` to your machine LAN IP, for example:
 
 ```bash
 EXPO_PUBLIC_API_URL=http://192.168.1.20:8080 npm start
