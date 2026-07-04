@@ -100,6 +100,10 @@ def main() -> None:
     des_xlsx.add_argument("--out", default="data/normalized/crop_production_history/des_district_2024_25.csv")
     des_xlsx.add_argument("--state-filter")
 
+    aspirational = sub.add_parser("normalize-aspirational-districts")
+    aspirational.add_argument("input_path")
+    aspirational.add_argument("--out", default="data/normalized/aspirational_districts/aspirational_districts.csv")
+
     args = parser.parse_args()
     if args.command == "fetch-data-gov-imd-subdivision":
         records = fetch_data_gov_records(args.resource_url, args.api_key, args.limit, args.total)
@@ -149,6 +153,10 @@ def main() -> None:
             ["state", "district", "crop", "season", "crop_year", "area_hectare", "production_tonne", "yield_kg_per_hectare"],
         )
         print(f"Normalized {len(rows)} DES crop-history rows -> {args.out}")
+    elif args.command == "normalize-aspirational-districts":
+        rows = normalize_aspirational_districts(Path(args.input_path))
+        write_csv(Path(args.out), rows, ["state", "district"])
+        print(f"Normalized {len(rows)} aspirational district rows -> {args.out}")
 
 
 def fetch_data_gov_records(resource_url: str, api_key: str, limit: int, total: int) -> list[dict[str, Any]]:
@@ -411,6 +419,17 @@ def normalize_des_district_xlsx(path: Path, *, state_filter: str | None = None) 
         if _has_crop_measure(crop_row):
             output.append(crop_row)
     return output
+
+
+def normalize_aspirational_districts(path: Path) -> list[dict[str, Any]]:
+    with path.open(newline="", encoding="utf-8-sig") as handle:
+        rows = []
+        for record in csv.DictReader(handle):
+            state = _clean(record.get("statename") or record.get("state"))
+            district = _clean(record.get("districtname") or record.get("district"))
+            if state and district:
+                rows.append({"state": state.title(), "district": district.title()})
+        return rows
 
 
 def _xlsx_rows(path: Path) -> list[list[str]]:

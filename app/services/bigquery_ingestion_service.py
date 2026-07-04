@@ -97,6 +97,14 @@ PUBLIC_DATA_SPECS: dict[str, PublicDataSpec] = {
             ColumnSpec("yield_kg_per_hectare", "FLOAT"),
         ),
     ),
+    "aspirational_districts": PublicDataSpec(
+        source_key="aspirational_districts",
+        table="aspirational_districts",
+        columns=(
+            ColumnSpec("state", required=True),
+            ColumnSpec("district", required=True),
+        ),
+    ),
     "agromet_advisory": PublicDataSpec(
         source_key="agromet_advisory",
         table="agromet_advisory",

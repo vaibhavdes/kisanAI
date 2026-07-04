@@ -30,6 +30,7 @@ from app.services.dialogflow_channel_service import DialogflowChannelResult
 from app.services.regional_cache_policy import RegionalCachePolicy
 from app.services.weather_context_service import WeatherContextService
 from scripts.fetch_public_data_sources import (
+    normalize_aspirational_districts,
     normalize_crop_csv,
     normalize_imd_subdivision_records,
     parse_dryspell_html,
@@ -252,6 +253,34 @@ def test_app_chat_handles_marathi_text_without_provider_send() -> None:
     assert recent.status_code == 200
     messages = recent.json()
     assert [item["channel"] for item in messages] == ["app", "app"]
+
+
+def test_app_chat_attaches_native_language_audio_when_tts_available(monkeypatch) -> None:
+    class Speech:
+        audio_base64 = base64.b64encode(b"marathi-audio").decode("ascii")
+        content_type = "audio/mpeg"
+
+    def fake_speak_reply(self, farmer_id, reply, language):
+        assert language == "mr-IN"
+        assert reply
+        return Speech()
+
+    monkeypatch.setattr("app.services.whatsapp_service.WhatsAppService._speak_reply", fake_speak_reply)
+
+    response = client.post(
+        "/api/v1/chat/message",
+        json={
+            "from_phone": "+91 99709 83797",
+            "text": "माझ्या शेताला आज पाणी द्यावे का?",
+            "language": "mr-IN",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["detected_language"] == "mr-IN"
+    assert body["response_audio_base64"] == Speech.audio_base64
+    assert body["response_audio_content_type"] == "audio/mpeg"
 
 
 def test_app_chat_auto_language_uses_detection_when_frontend_omits_language(monkeypatch) -> None:
@@ -731,6 +760,7 @@ def test_dialogflow_webhook_detects_intent_from_text_when_tag_missing() -> None:
 
 def test_voice_transcribe_and_speak_use_configured_fallback(monkeypatch) -> None:
     calls: list[str] = []
+    monkeypatch.setattr(settings, "enable_google_integrations", True)
 
     def google_stt_failure(self, payload, audio):
         calls.append("google_stt")
@@ -1526,6 +1556,12 @@ def test_public_data_fetcher_normalizes_subdivision_and_crop_files(tmp_path) -> 
             "production_tonne": "40.0",
             "yield_kg_per_hectare": "2666",
         }
+    ]
+
+    aspirational_csv = tmp_path / "aspirational.csv"
+    aspirational_csv.write_text("statename,districtname\nMAHARASHTRA,Nandurbar\n", encoding="utf-8")
+    assert normalize_aspirational_districts(aspirational_csv) == [
+        {"state": "Maharashtra", "district": "Nandurbar"}
     ]
 
 

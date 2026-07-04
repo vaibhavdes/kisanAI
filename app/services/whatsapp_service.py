@@ -66,6 +66,7 @@ class WhatsAppService:
                 )
             else:
                 dialogflow_response.delivery_status = "app_response"
+            self._attach_audio(farmer.id, dialogflow_response, detected_language)
             self._log_assistant_message(
                 farmer.id,
                 dialogflow_response.reply,
@@ -89,11 +90,7 @@ class WhatsAppService:
         response.detected_language = detected_language
         response.missing_fields = identity.missing_fields
 
-        if settings.enable_google_integrations and response.reply:
-            response_audio = self._speak_reply(farmer.id, response.reply, detected_language)
-            if response_audio:
-                response.response_audio_base64 = response_audio.audio_base64
-                response.response_audio_content_type = response_audio.content_type
+        self._attach_audio(farmer.id, response, detected_language)
 
         if send_outbound:
             response.outbound_provider, response.delivery_status = self._send_whatsapp_reply(
@@ -315,6 +312,14 @@ class WhatsAppService:
             return VoiceService().speak(VoiceSpeakRequest(farmer_id=farmer_id, text=reply, language=language))
         except VoiceProviderUnavailable:
             return None
+
+    def _attach_audio(self, farmer_id: str, response: WhatsAppWebhookResponse, language: str) -> None:
+        if not response.reply or response.response_audio_base64:
+            return
+        response_audio = self._speak_reply(farmer_id, response.reply, language)
+        if response_audio:
+            response.response_audio_base64 = response_audio.audio_base64
+            response.response_audio_content_type = response_audio.content_type
 
     def _detect_language(self, text: str | None) -> str | None:
         if not text or not settings.enable_google_integrations:

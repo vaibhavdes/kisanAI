@@ -46,14 +46,13 @@ class VoiceService:
         tts_provider = None
         audio_base64 = None
         audio_content_type = None
-        if settings.enable_google_integrations:
-            try:
-                speech = self.speak(VoiceSpeakRequest(farmer_id=farmer.id, text=response, language=language))
-                tts_provider = speech.provider
-                audio_base64 = speech.audio_base64
-                audio_content_type = speech.content_type
-            except VoiceProviderUnavailable:
-                pass
+        try:
+            speech = self.speak(VoiceSpeakRequest(farmer_id=farmer.id, text=response, language=language))
+            tts_provider = speech.provider
+            audio_base64 = speech.audio_base64
+            audio_content_type = speech.content_type
+        except VoiceProviderUnavailable:
+            pass
         return VoiceIntakeResponse(
             transcript=transcript,
             detected_intent=intent,
@@ -241,6 +240,10 @@ class VoiceService:
         )
 
     def _provider_order(self, feature: ProviderFeature) -> list[ProviderName]:
+        if feature in {ProviderFeature.stt, ProviderFeature.tts} and not (
+            settings.enable_google_integrations or settings.sarvam_api_key
+        ):
+            return []
         route = store.get_provider_route(feature)
         if not route.enabled:
             return []
@@ -248,6 +251,12 @@ class VoiceService:
         providers = [route.primary]
         if route.allow_fallback and route.secondary:
             providers.append(route.secondary)
+        if not settings.enable_google_integrations:
+            providers = [
+                provider
+                for provider in providers
+                if provider in {ProviderName.sarvam_stt, ProviderName.sarvam_tts}
+            ]
         return providers
 
     def _load_audio(self, audio_base64: str | None, audio_uri: str | None) -> bytes:

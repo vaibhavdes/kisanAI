@@ -94,6 +94,16 @@ CREATE TABLE IF NOT EXISTS `kisanai-501120.kisan_ai_curated.crop_production_hist
 )
 CLUSTER BY state, district, crop;
 
+CREATE TABLE IF NOT EXISTS `kisanai-501120.kisan_ai_curated.aspirational_districts` (
+  state STRING NOT NULL,
+  district STRING NOT NULL,
+  source_name STRING NOT NULL,
+  source_url STRING,
+  source_file_uri STRING,
+  ingested_at TIMESTAMP NOT NULL
+)
+CLUSTER BY state, district;
+
 CREATE TABLE IF NOT EXISTS `kisanai-501120.kisan_ai_curated.agromet_advisory` (
   state STRING NOT NULL,
   district STRING,

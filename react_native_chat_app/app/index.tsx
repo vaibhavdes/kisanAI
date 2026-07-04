@@ -639,7 +639,16 @@ function AttachmentAction({ label, icon, onPress }: { label: string; icon: strin
 
 function MessageBubble({ message, maxWidth }: { message: ChatMessage; maxWidth: number }) {
   const audioPlayer = useAudioPlayer(message.audioUri ? { uri: message.audioUri } : null);
+  const hasAutoPlayed = useRef(false);
   const isSystem = message.kind === "system";
+
+  useEffect(() => {
+    if (!message.mine && message.audioUri && !hasAutoPlayed.current) {
+      hasAutoPlayed.current = true;
+      audioPlayer.play();
+    }
+  }, [audioPlayer, message.audioUri, message.mine]);
+
   return (
     <View style={{ alignItems: isSystem ? "center" : message.mine ? "flex-end" : "flex-start" }}>
       <View
