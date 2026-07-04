@@ -701,6 +701,8 @@ class GovernmentDataContextResponse(BaseModel):
     soil_health: DataSignal
     crop_history: DataSignal
     agromet_advisory: DataSignal
+    dryspell_history: DataSignal | None = None
+    heavy_rainfall_history: DataSignal | None = None
     recommended_datasets: list[DatasetReference]
     missing_sources: list[str] = Field(default_factory=list)
 

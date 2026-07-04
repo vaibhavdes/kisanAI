@@ -19,6 +19,8 @@ class BigQueryPublicDataService:
         soil = self._soil_health(payload)
         crop_history = self._crop_history(payload)
         agromet = self._agromet(payload)
+        dryspell = self._dryspell(payload)
+        heavy_rainfall = self._heavy_rainfall(payload)
         signals = {
             "rainfall_normal": rainfall,
             "groundwater": groundwater,
@@ -26,6 +28,9 @@ class BigQueryPublicDataService:
             "crop_history": crop_history,
             "agromet_advisory": agromet,
         }
+        if payload.state.lower() == "maharashtra":
+            signals["dryspell_history"] = dryspell
+            signals["heavy_rainfall_history"] = heavy_rainfall
         return GovernmentDataContextResponse(
             state=payload.state,
             district=payload.district,
@@ -35,6 +40,8 @@ class BigQueryPublicDataService:
             soil_health=soil,
             crop_history=crop_history,
             agromet_advisory=agromet,
+            dryspell_history=dryspell,
+            heavy_rainfall_history=heavy_rainfall,
             recommended_datasets=GovernmentDataService().list_sources(),
             missing_sources=[name for name, signal in signals.items() if not signal.available],
         )
@@ -177,6 +184,68 @@ class BigQueryPublicDataService:
             source=str(row.get("source_name") or "agromet_advisory"),
             value=str(row.get("advisory_text") or "")[:500],
             note=f"Latest agromet bulletin date: {row.get('bulletin_date')}.",
+        )
+
+    def _dryspell(self, payload: GovernmentDataContextRequest) -> DataSignal:
+        if payload.state.lower() != "maharashtra":
+            return self._missing("maharashtra_dryspell_events", "Maharashtra-only dry-spell source.")
+        rows = self._query(
+            """
+            SELECT start_date, end_date, duration_days, taluka, source_name
+            FROM `{project}.{dataset}.maharashtra_dryspell_events`
+            WHERE LOWER(state) = LOWER(@state)
+              AND LOWER(district) = LOWER(@district)
+            ORDER BY season_year DESC, start_date DESC
+            LIMIT 5
+            """,
+            payload,
+        )
+        if not rows:
+            return self._missing("maharashtra_dryspell_events", "No tehsil dry-spell event found for district.")
+        latest = rows[0]
+        return DataSignal(
+            available=True,
+            source=str(latest.get("source_name") or "maharashtra_dryspell_events"),
+            value=len(rows),
+            unit="events",
+            note=(
+                f"Latest dry spell: {latest.get('taluka')} "
+                f"{latest.get('start_date')} to {latest.get('end_date')}."
+            ),
+            metadata={
+                "latest_duration_days": self._int(latest.get("duration_days")),
+                "latest_start_date": str(latest.get("start_date")),
+                "latest_end_date": str(latest.get("end_date")),
+            },
+        )
+
+    def _heavy_rainfall(self, payload: GovernmentDataContextRequest) -> DataSignal:
+        if payload.state.lower() != "maharashtra":
+            return self._missing("maharashtra_heavy_rainfall_events", "Maharashtra-only heavy-rain source.")
+        rows = self._query(
+            """
+            SELECT event_date, rainfall_mm, taluka, source_name
+            FROM `{project}.{dataset}.maharashtra_heavy_rainfall_events`
+            WHERE LOWER(state) = LOWER(@state)
+              AND LOWER(district) = LOWER(@district)
+            ORDER BY season_year DESC, event_date DESC
+            LIMIT 5
+            """,
+            payload,
+        )
+        if not rows:
+            return self._missing("maharashtra_heavy_rainfall_events", "No tehsil heavy-rain event found for district.")
+        latest = rows[0]
+        return DataSignal(
+            available=True,
+            source=str(latest.get("source_name") or "maharashtra_heavy_rainfall_events"),
+            value=self._float(latest.get("rainfall_mm")),
+            unit="mm",
+            note=f"Latest heavy rainfall: {latest.get('taluka')} on {latest.get('event_date')}.",
+            metadata={
+                "event_count": len(rows),
+                "latest_event_date": str(latest.get("event_date")),
+            },
         )
 
     def _query(

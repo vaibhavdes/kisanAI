@@ -27,7 +27,14 @@ from app.repositories.store import store
 from app.services.bigquery_ingestion_service import PublicDataIngestionService
 from app.services.bigquery_public_data_service import BigQueryPublicDataService
 from app.services.dialogflow_channel_service import DialogflowChannelResult
+from app.services.regional_cache_policy import RegionalCachePolicy
 from app.services.weather_context_service import WeatherContextService
+from scripts.fetch_public_data_sources import (
+    normalize_crop_csv,
+    normalize_imd_subdivision_records,
+    parse_dryspell_html,
+    parse_heavy_rainfall_html,
+)
 
 client = TestClient(app)
 
@@ -1416,6 +1423,80 @@ def test_bigquery_public_data_ingestion_validates_required_columns(tmp_path) -> 
         assert "district" in str(exc)
     else:
         raise AssertionError("Expected required-column validation to fail")
+
+
+def test_public_data_fetcher_parses_maharain_html_events() -> None:
+    dry_html = """
+    <table><tbody><tr><td>1</td><td>Thane</td><td>Thane</td>
+    <td>07-10-2025 To 16-10-2025 (10)</td></tr></tbody></table>
+    """
+    heavy_html = """
+    <table><tbody><tr><td>1</td><td>Thane</td><td>Thane</td>
+    <td>17-06-2025 (101.4)</td><td>19-06-2025 (72.3)</td></tr></tbody></table>
+    """
+
+    dry_rows = parse_dryspell_html(dry_html, 2025)
+    heavy_rows = parse_heavy_rainfall_html(heavy_html, 2025)
+
+    assert dry_rows == [
+        {
+            "state": "Maharashtra",
+            "district": "Thane",
+            "taluka": "Thane",
+            "season_year": 2025,
+            "start_date": "2025-10-07",
+            "end_date": "2025-10-16",
+            "duration_days": "10",
+        }
+    ]
+    assert len(heavy_rows) == 2
+    assert heavy_rows[0]["event_date"] == "2025-06-17"
+    assert heavy_rows[0]["rainfall_mm"] == "101.4"
+
+
+def test_public_data_fetcher_normalizes_subdivision_and_crop_files(tmp_path) -> None:
+    rainfall_rows = normalize_imd_subdivision_records(
+        [{"SUBDIVISION": "Madhya Maharashtra", "YEAR": "2024", "JAN": "1.5", "FEB": "2.5"}]
+    )
+    assert rainfall_rows[:2] == [
+        {"subdivision": "Madhya Maharashtra", "year": 2024, "month": 1, "rainfall_mm": "1.5"},
+        {"subdivision": "Madhya Maharashtra", "year": 2024, "month": 2, "rainfall_mm": "2.5"},
+    ]
+
+    crop_csv = tmp_path / "crop.csv"
+    crop_csv.write_text(
+        '"Crop","State","Season","Area-2024-25","Production-2024-25","Yield-2024-25"\n'
+        '"Rice","Maharashtra","Kharif","15.0","40.0","2666"\n',
+        encoding="utf-8",
+    )
+    crop_rows = normalize_crop_csv(crop_csv, state_filter="Maharashtra")
+    assert crop_rows == [
+        {
+            "state": "Maharashtra",
+            "district": None,
+            "crop": "Rice",
+            "season": "Kharif",
+            "crop_year": 2024,
+            "area_hectare": "15.0",
+            "production_tonne": "40.0",
+            "yield_kg_per_hectare": "2666",
+        }
+    ]
+
+
+def test_regional_cache_policy_builds_reusable_region_keys() -> None:
+    window = RegionalCachePolicy().build_key(
+        source_type="satellite_index",
+        provider="earth_engine",
+        state="Maharashtra",
+        district="Ahilyanagar",
+        taluka="Haveli",
+        latitude=19.09481,
+        longitude=74.74803,
+    )
+
+    assert window.cache_key == "satellite_index|earth_engine|maharashtra|ahilyanagar|haveli|lat:19.09|lon:74.75"
+    assert window.ttl_seconds == 7 * 24 * 60 * 60
 
 
 def test_advisory_generation_prefers_vertex_and_falls_back_to_gemini(monkeypatch) -> None:

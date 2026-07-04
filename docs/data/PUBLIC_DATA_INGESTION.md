@@ -72,6 +72,19 @@ gs://kisanai-501120-kisan-ai-public-data/
 | SMAP L4 Soil Moisture | https://developers.google.com/earth-engine/datasets/catalog/NASA_SMAP_SPL4SMGP_008 | Surface/root-zone soil moisture and wetness signals. |
 | Open-Meteo | https://open-meteo.com/en/docs | Free fallback weather forecast with current/hourly/daily, ET0, soil moisture, soil temperature. |
 
+## Maharashtra Sources Added
+
+| Source | Endpoint / file | Loaded into | Current status |
+|---|---|---|---|
+| data.gov.in IMD subdivision rainfall resource | `https://api.data.gov.in/resource/d0419b03-b41b-4226-b48b-0bc92bf139f8` | `subdivision_rainfall_history` | Script ready; live API timed out locally, so current load uses the downloaded CSV. |
+| Downloaded IMD subdivision CSV | `Sub_Division_IMD_2017.csv` | `subdivision_rainfall_history` | Loaded: 50,256 rows. |
+| Maharain tehsil dry spell | `https://maharain.maharashtra.gov.in/test/maharain/rpt_past_queries_tehsil_wise_dryspell.php` | `maharashtra_dryspell_events` | Loaded 2021-2025: 6,747 rows. |
+| Maharain tehsil heavy rainfall | `https://maharain.maharashtra.gov.in/test/maharain/rpt_past_queries_tehsil_wise_heavy_rainfall.php` | `maharashtra_heavy_rainfall_events` | Loaded 2021-2025: 6,023 rows. |
+| Maharashtra rice estimate CSV | `Final-Estimate-of-Area,-Production-&-Yield-for-Rice.csv` | `crop_production_history` | Loaded: 15 rows. |
+| All-India crop-wise APY CSV | `All-India_-Crop-wise-Area,-Production-&-Yield.csv` | `crop_production_history` | Loaded: 474 rows. |
+| All-India year-wise APY CSV | `All-India_-Year-wise-Crop-Area,-Production-&-Yield.csv` | `crop_production_history` | Loaded: 4,888 rows. |
+| DES district XLSX 2024-25 | `DES-District-Data-For-2024-25.xlsx` | `crop_production_history` | Loaded Maharashtra visible row: 1 row. |
+
 ## Source To Table Mapping
 
 | Priority | Dataset | Primary source | Fallback/source helper | BigQuery table | Why it matters |
@@ -113,6 +126,84 @@ gs://kisanai-501120-kisan-ai-public-data/
    - Download current and past IMD agromet bulletins.
    - Normalize PDF/text bulletin rows to `state,district,bulletin_date,language,crop,advisory_text,risk_tags`.
    - Load with `source_key=agromet_advisory`.
+
+## Fetch And Normalize Commands
+
+Normalize the downloaded IMD subdivision CSV:
+
+```bash
+.venv-google/bin/python scripts/fetch_public_data_sources.py normalize-imd-subdivision \
+  /Users/vaibhavkurkute/Downloads/Sub_Division_IMD_2017.csv \
+  --out data/normalized/subdivision_rainfall_history/imd_subdivision_2017.csv
+```
+
+Fetch data.gov IMD subdivision data when the API is responsive:
+
+```bash
+.venv-google/bin/python scripts/fetch_public_data_sources.py fetch-data-gov-imd-subdivision \
+  --api-key "$DATA_GOV_API_KEY" \
+  --limit 100 \
+  --total 641 \
+  --out-dir data/raw/data_gov \
+  --normalized-out data/normalized/subdivision_rainfall_history/data_gov_imd_subdivision.csv
+```
+
+Fetch Maharain dry-spell and heavy-rainfall events for the last five seasons:
+
+```bash
+.venv-google/bin/python scripts/fetch_public_data_sources.py fetch-maharain \
+  --start-year 2021 \
+  --end-year 2025 \
+  --out-dir data/raw/maharain \
+  --normalized-dir data/normalized \
+  --insecure
+```
+
+`--insecure` is explicit because the Maharain server certificate chain failed local Python CA verification. Keep it visible in scripts and CI logs rather than disabling TLS verification silently.
+
+Normalize crop-history files:
+
+```bash
+.venv-google/bin/python scripts/fetch_public_data_sources.py normalize-crop-csv \
+  "/Users/vaibhavkurkute/Downloads/Final-Estimate-of-Area,-Production-&-Yield-for-Rice.csv" \
+  --state-filter Maharashtra \
+  --out data/normalized/crop_production_history/maharashtra_rice_estimate.csv
+
+.venv-google/bin/python scripts/fetch_public_data_sources.py normalize-crop-csv \
+  "/Users/vaibhavkurkute/Downloads/All-India_-Crop-wise-Area,-Production-&-Yield.csv" \
+  --out data/normalized/crop_production_history/all_india_crop_wise.csv
+
+.venv-google/bin/python scripts/fetch_public_data_sources.py normalize-crop-csv \
+  "/Users/vaibhavkurkute/Downloads/All-India_-Year-wise-Crop-Area,-Production-&-Yield.csv" \
+  --out data/normalized/crop_production_history/all_india_year_wise.csv
+
+.venv-google/bin/python scripts/fetch_public_data_sources.py normalize-des-district-xlsx \
+  "/Users/vaibhavkurkute/Downloads/DES-District-Data-For-2024-25.xlsx" \
+  --state-filter Maharashtra \
+  --out data/normalized/crop_production_history/maharashtra_des_district_2024_25.csv
+```
+
+Apply schema and load:
+
+```bash
+bq query --use_legacy_sql=false < infra/bigquery/public_data_schema.sql
+
+.venv-google/bin/python scripts/ingest_public_data.py subdivision_rainfall_history \
+  data/normalized/subdivision_rainfall_history/imd_subdivision_2017.csv \
+  --source-name "IMD subdivision rainfall CSV" \
+  --source-url "https://api.data.gov.in/resource/d0419b03-b41b-4226-b48b-0bc92bf139f8" \
+  --source-file-uri "local:data/normalized/subdivision_rainfall_history/imd_subdivision_2017.csv"
+
+.venv-google/bin/python scripts/ingest_public_data.py maharashtra_dryspell_events \
+  data/normalized/maharashtra_dryspell_events/maharain_dryspell.csv \
+  --source-name "Maharain tehsil dry spell" \
+  --source-url "https://maharain.maharashtra.gov.in/test/maharain/rpt_past_queries_tehsil_wise_dryspell.php"
+
+.venv-google/bin/python scripts/ingest_public_data.py maharashtra_heavy_rainfall_events \
+  data/normalized/maharashtra_heavy_rainfall_events/maharain_heavy_rainfall.csv \
+  --source-name "Maharain tehsil heavy rainfall" \
+  --source-url "https://maharain.maharashtra.gov.in/test/maharain/rpt_past_queries_tehsil_wise_heavy_rainfall.php"
+```
 
 ## Ingestion Flow
 
@@ -170,6 +261,9 @@ Supported `source_key` values:
 | `soil_health_summary` | `soil_health_summary` | `state,district` |
 | `crop_production_history` | `crop_production_history` | `state,crop,crop_year` |
 | `agromet_advisory` | `agromet_advisory` | `state,bulletin_date,advisory_text` |
+| `subdivision_rainfall_history` | `subdivision_rainfall_history` | `subdivision,year,month` |
+| `maharashtra_dryspell_events` | `maharashtra_dryspell_events` | `state,district,taluka,season_year,start_date,end_date` |
+| `maharashtra_heavy_rainfall_events` | `maharashtra_heavy_rainfall_events` | `state,district,taluka,season_year,event_date` |
 
 Optional columns are accepted when available:
 
@@ -180,6 +274,9 @@ groundwater_level: block, observation_date, groundwater_depth_m, category
 soil_health_summary: block, village, soil_type, ph, organic_carbon, nitrogen, phosphorus, potassium, micronutrients
 crop_production_history: district, season, area_hectare, production_tonne, yield_kg_per_hectare
 agromet_advisory: district, language, crop, risk_tags
+subdivision_rainfall_history: rainfall_mm
+maharashtra_dryspell_events: duration_days
+maharashtra_heavy_rainfall_events: rainfall_mm
 ```
 
 Formatting rules:
@@ -202,3 +299,20 @@ For every advisory decision, store the sources used:
   "advisory": "gemini"
 }
 ```
+
+## Regional Cache Policy
+
+Many farmers in the same area can reuse the same data. The backend now includes `RegionalCachePolicy` and the `kisan_ai_ops.regional_source_cache` table to standardize reuse:
+
+| Source type | Refresh window |
+|---|---|
+| Weather forecast | 3 hours |
+| IMD warning | 1 hour |
+| Agromet advisory | 24 hours |
+| Earth Engine satellite index | 7 days |
+| Maharain dry-spell/heavy-rainfall events | 7 days |
+| Groundwater | 30 days |
+| Soil health baseline | 90 days |
+| Crop history | 365 days |
+
+Cache keys use source type, provider, state, district, taluka and, when needed, rounded latitude/longitude cells. This lets a forecast or satellite query for one mapped farm be reused for nearby farms in the same region until its refresh window expires.

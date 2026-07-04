@@ -109,3 +109,62 @@ CREATE TABLE IF NOT EXISTS `kisanai-501120.kisan_ai_curated.agromet_advisory` (
 )
 PARTITION BY bulletin_date
 CLUSTER BY state, district, crop;
+
+CREATE TABLE IF NOT EXISTS `kisanai-501120.kisan_ai_curated.subdivision_rainfall_history` (
+  subdivision STRING NOT NULL,
+  year INT64 NOT NULL,
+  month INT64 NOT NULL,
+  rainfall_mm FLOAT64,
+  source_name STRING NOT NULL,
+  source_url STRING,
+  source_file_uri STRING,
+  ingested_at TIMESTAMP NOT NULL
+)
+CLUSTER BY subdivision, year;
+
+CREATE TABLE IF NOT EXISTS `kisanai-501120.kisan_ai_curated.maharashtra_dryspell_events` (
+  state STRING NOT NULL,
+  district STRING NOT NULL,
+  taluka STRING NOT NULL,
+  season_year INT64 NOT NULL,
+  start_date DATE NOT NULL,
+  end_date DATE NOT NULL,
+  duration_days INT64,
+  source_name STRING NOT NULL,
+  source_url STRING,
+  source_file_uri STRING,
+  ingested_at TIMESTAMP NOT NULL
+)
+PARTITION BY start_date
+CLUSTER BY district, taluka;
+
+CREATE TABLE IF NOT EXISTS `kisanai-501120.kisan_ai_curated.maharashtra_heavy_rainfall_events` (
+  state STRING NOT NULL,
+  district STRING NOT NULL,
+  taluka STRING NOT NULL,
+  season_year INT64 NOT NULL,
+  event_date DATE NOT NULL,
+  rainfall_mm FLOAT64,
+  source_name STRING NOT NULL,
+  source_url STRING,
+  source_file_uri STRING,
+  ingested_at TIMESTAMP NOT NULL
+)
+PARTITION BY event_date
+CLUSTER BY district, taluka;
+
+CREATE TABLE IF NOT EXISTS `kisanai-501120.kisan_ai_ops.regional_source_cache` (
+  cache_key STRING NOT NULL,
+  source_type STRING NOT NULL,
+  provider STRING NOT NULL,
+  state STRING,
+  district STRING,
+  taluka STRING,
+  latitude_cell FLOAT64,
+  longitude_cell FLOAT64,
+  payload_json JSON,
+  valid_from TIMESTAMP NOT NULL,
+  valid_until TIMESTAMP NOT NULL,
+  refreshed_at TIMESTAMP NOT NULL
+)
+CLUSTER BY source_type, state, district, taluka;

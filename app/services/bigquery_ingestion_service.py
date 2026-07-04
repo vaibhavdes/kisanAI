@@ -110,6 +110,41 @@ PUBLIC_DATA_SPECS: dict[str, PublicDataSpec] = {
             ColumnSpec("risk_tags", "ARRAY"),
         ),
     ),
+    "subdivision_rainfall_history": PublicDataSpec(
+        source_key="subdivision_rainfall_history",
+        table="subdivision_rainfall_history",
+        columns=(
+            ColumnSpec("subdivision", required=True),
+            ColumnSpec("year", "INT", required=True),
+            ColumnSpec("month", "INT", required=True),
+            ColumnSpec("rainfall_mm", "FLOAT"),
+        ),
+    ),
+    "maharashtra_dryspell_events": PublicDataSpec(
+        source_key="maharashtra_dryspell_events",
+        table="maharashtra_dryspell_events",
+        columns=(
+            ColumnSpec("state", required=True),
+            ColumnSpec("district", required=True),
+            ColumnSpec("taluka", required=True),
+            ColumnSpec("season_year", "INT", required=True),
+            ColumnSpec("start_date", "DATE", required=True),
+            ColumnSpec("end_date", "DATE", required=True),
+            ColumnSpec("duration_days", "INT"),
+        ),
+    ),
+    "maharashtra_heavy_rainfall_events": PublicDataSpec(
+        source_key="maharashtra_heavy_rainfall_events",
+        table="maharashtra_heavy_rainfall_events",
+        columns=(
+            ColumnSpec("state", required=True),
+            ColumnSpec("district", required=True),
+            ColumnSpec("taluka", required=True),
+            ColumnSpec("season_year", "INT", required=True),
+            ColumnSpec("event_date", "DATE", required=True),
+            ColumnSpec("rainfall_mm", "FLOAT"),
+        ),
+    ),
 }
 
 

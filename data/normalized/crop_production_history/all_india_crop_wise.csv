@@ -1,0 +1,475 @@
+state,district,crop,season,crop_year,area_hectare,production_tonne,yield_kg_per_hectare
+All India,,Rice,Kharif,2021,410.38,1110.01,2705.00
+All India,,Rice,Kharif,2022,404.03,1105.12,2735.00
+All India,,Rice,Kharif,2023,407.34,1132.59,2780.00
+All India,,Rice,Kharif,2024,434.66,1227.72,2825.00
+All India,,Rice,Kharif,2025,446.70,1247.58,2793.00
+All India,,Rice,Rabi,2021,52.40,184.71,3525.00
+All India,,Rice,Rabi,2022,43.28,150.04,3467.00
+All India,,Rice,Rabi,2023,40.76,146.01,3582.00
+All India,,Rice,Rabi,2024,44.73,161.29,3606.00
+All India,,Rice,Rabi,2025,48.99,181.07,3696.00
+All India,,Rice,Summer,2022,31.01,102.40,3302.00
+All India,,Rice,Summer,2023,30.18,99.65,3302.00
+All India,,Rice,Summer,2024,33.28,112.84,3391.00
+All India,,Rice,Summer,2025,32.63,111.59,3419.00
+All India,,Rice,Total,2021,462.79,1294.71,2798.00
+All India,,Rice,Total,2022,478.32,1357.55,2838.00
+All India,,Rice,Total,2023,478.28,1378.25,2882.00
+All India,,Rice,Total,2024,512.67,1501.84,2929.00
+All India,,Rice,Total,2025,528.32,1540.24,2915.00
+All India,,Wheat,Rabi,2021,304.59,1077.42,3537.00
+All India,,Wheat,Rabi,2022,314.01,1105.54,3521.00
+All India,,Wheat,Rabi,2023,318.33,1132.92,3559.00
+All India,,Wheat,Rabi,2024,328.04,1179.45,3595.00
+All India,,Wheat,Rabi,2025,336.00,1206.57,3591.00
+All India,,Wheat,Total,2021,304.59,1077.42,3537.00
+All India,,Wheat,Total,2022,314.01,1105.54,3521.00
+All India,,Wheat,Total,2023,318.33,1132.92,3559.00
+All India,,Wheat,Total,2024,328.04,1179.45,3595.00
+All India,,Wheat,Total,2025,336.00,1206.57,3591.00
+All India,,Maize,Kharif,2021,77.85,226.81,2914.00
+All India,,Maize,Kharif,2022,80.53,236.74,2940.00
+All India,,Maize,Kharif,2023,83.29,222.45,2671.00
+All India,,Maize,Kharif,2024,84.61,248.08,2932.00
+All India,,Maize,Kharif,2025,98.61,305.09,3094.00
+All India,,Maize,Rabi,2021,21.73,110.49,5084.00
+All India,,Maize,Rabi,2022,21.83,116.90,5355.00
+All India,,Maize,Rabi,2023,21.75,120.28,5529.00
+All India,,Maize,Rabi,2024,27.80,147.53,5306.00
+All India,,Maize,Rabi,2025,34.88,200.25,5740.00
+All India,,Maize,Summer,2022,5.08,27.21,5361.00
+All India,,Maize,Summer,2023,7.37,33.92,4603.00
+All India,,Maize,Summer,2024,8.50,38.47,4528.00
+All India,,Maize,Summer,2025,10.58,45.59,4308.00
+All India,,Maize,Total,2021,99.58,337.30,3387.00
+All India,,Maize,Total,2022,107.44,380.85,3545.00
+All India,,Maize,Total,2023,112.41,376.65,3351.00
+All India,,Maize,Total,2024,120.91,434.09,3590.00
+All India,,Maize,Total,2025,144.08,550.93,3824.00
+All India,,Barley,Rabi,2021,4.53,13.71,3025.00
+All India,,Barley,Rabi,2022,6.28,19.13,3044.00
+All India,,Barley,Rabi,2023,5.51,16.99,3082.00
+All India,,Barley,Rabi,2024,6.08,19.19,3159.00
+All India,,Barley,Rabi,2025,5.66,17.96,3171.00
+All India,,Barley,Total,2021,4.53,13.71,3025.00
+All India,,Barley,Total,2022,6.28,19.13,3044.00
+All India,,Barley,Total,2023,5.51,16.99,3082.00
+All India,,Barley,Total,2024,6.08,19.19,3159.00
+All India,,Barley,Total,2025,5.66,17.96,3171.00
+All India,,Jowar,Kharif,2021,14.66,15.98,1090.00
+All India,,Jowar,Kharif,2022,13.82,14.80,1071.00
+All India,,Jowar,Kharif,2023,12.89,15.09,1170.00
+All India,,Jowar,Kharif,2024,14.42,17.37,1204.00
+All India,,Jowar,Kharif,2025,12.10,13.13,1085.00
+All India,,Jowar,Rabi,2021,23.34,25.52,1093.00
+All India,,Jowar,Rabi,2022,21.37,23.22,1086.00
+All India,,Jowar,Rabi,2023,27.36,31.89,1165.00
+All India,,Jowar,Rabi,2024,25.17,31.87,1266.00
+All India,,Jowar,Rabi,2025,22.96,30.09,1311.00
+All India,,Jowar,Summer,2022,0.16,0.13,811.00
+All India,,Jowar,Summer,2023,0.51,0.40,789.00
+All India,,Jowar,Summer,2024,0.36,0.30,842.00
+All India,,Jowar,Summer,2025,0.43,0.34,792.00
+All India,,Jowar,Total,2021,38.01,41.51,1092.00
+All India,,Jowar,Total,2022,35.35,38.14,1079.00
+All India,,Jowar,Total,2023,40.76,47.37,1162.00
+All India,,Jowar,Total,2024,39.95,49.55,1240.00
+All India,,Jowar,Total,2025,35.48,43.56,1228.00
+All India,,Bajra,Kharif,2021,68.41,97.81,1430.00
+All India,,Bajra,Kharif,2022,71.72,103.49,1443.00
+All India,,Bajra,Kharif,2023,69.66,96.63,1387.00
+All India,,Bajra,Kharif,2024,68.38,99.78,1459.00
+All India,,Bajra,Kharif,2025,63.80,94.76,1485.00
+All India,,Bajra,Summer,2022,4.00,10.82,2705.00
+All India,,Bajra,Summer,2023,4.08,10.53,2579.00
+All India,,Bajra,Summer,2024,5.20,12.27,2361.00
+All India,,Bajra,Summer,2025,5.83,13.72,2353.00
+All India,,Bajra,Total,2021,68.41,97.81,1430.00
+All India,,Bajra,Total,2022,75.72,114.31,1510.00
+All India,,Bajra,Total,2023,73.75,107.16,1453.00
+All India,,Bajra,Total,2024,73.57,112.05,1523.00
+All India,,Bajra,Total,2025,69.63,108.48,1558.00
+All India,,Ragi,Kharif,2021,12.18,17.01,1396.00
+All India,,Ragi,Kharif,2022,11.63,16.91,1454.00
+All India,,Ragi,Kharif,2023,12.15,16.70,1375.00
+All India,,Ragi,Kharif,2024,12.48,19.77,1584.00
+All India,,Ragi,Kharif,2025,13.46,20.00,1486.00
+All India,,Ragi,Total,2021,12.18,17.01,1396.00
+All India,,Ragi,Total,2022,11.63,16.91,1454.00
+All India,,Ragi,Total,2023,12.15,16.70,1375.00
+All India,,Ragi,Total,2024,12.48,19.77,1584.00
+All India,,Ragi,Total,2025,13.46,20.00,1486.00
+All India,,Small Millets,Kharif,2021,4.29,3.67,857.00
+All India,,Small Millets,Kharif,2022,4.28,3.84,898.00
+All India,,Small Millets,Kharif,2023,4.80,4.49,935.00
+All India,,Small Millets,Kharif,2024,4.55,4.56,1001.00
+All India,,Small Millets,Kharif,2025,4.15,3.80,915.00
+All India,,Small Millets,Total,2021,4.29,3.67,857.00
+All India,,Small Millets,Total,2022,4.28,3.84,898.00
+All India,,Small Millets,Total,2023,4.80,4.49,935.00
+All India,,Small Millets,Total,2024,4.55,4.56,1001.00
+All India,,Small Millets,Total,2025,4.15,3.80,915.00
+All India,,Shree Anna /Nutri Cereals,Kharif,2021,99.55,134.47,1351.00
+All India,,Shree Anna /Nutri Cereals,Kharif,2022,101.46,139.04,1370.00
+All India,,Shree Anna /Nutri Cereals,Kharif,2023,99.50,132.90,1336.00
+All India,,Shree Anna /Nutri Cereals,Kharif,2024,99.83,141.48,1417.00
+All India,,Shree Anna /Nutri Cereals,Kharif,2025,93.51,131.69,1408.00
+All India,,Shree Anna /Nutri Cereals,Rabi,2021,23.34,25.52,1093.00
+All India,,Shree Anna /Nutri Cereals,Rabi,2022,21.37,23.22,1086.00
+All India,,Shree Anna /Nutri Cereals,Rabi,2023,27.36,31.89,1165.00
+All India,,Shree Anna /Nutri Cereals,Rabi,2024,25.17,31.87,1266.00
+All India,,Shree Anna /Nutri Cereals,Rabi,2025,22.96,30.09,1311.00
+All India,,Shree Anna /Nutri Cereals,Summer,2022,4.16,10.95,2634.00
+All India,,Shree Anna /Nutri Cereals,Summer,2023,4.59,10.93,2381.00
+All India,,Shree Anna /Nutri Cereals,Summer,2024,5.56,12.57,2263.00
+All India,,Shree Anna /Nutri Cereals,Summer,2025,6.26,14.06,2247.00
+All India,,Shree Anna /Nutri Cereals,Total,2021,122.89,160.00,1302.00
+All India,,Shree Anna /Nutri Cereals,Total,2022,126.98,173.21,1364.00
+All India,,Shree Anna /Nutri Cereals,Total,2023,131.45,175.72,1337.00
+All India,,Shree Anna /Nutri Cereals,Total,2024,130.56,185.92,1424.00
+All India,,Shree Anna /Nutri Cereals,Total,2025,122.73,175.84,1433.00
+All India,,Nutri/Coarse Cereals,Kharif,2021,177.39,361.28,2037.00
+All India,,Nutri/Coarse Cereals,Kharif,2022,181.99,375.78,2065.00
+All India,,Nutri/Coarse Cereals,Kharif,2023,182.79,355.35,1944.00
+All India,,Nutri/Coarse Cereals,Kharif,2024,184.44,389.56,2112.00
+All India,,Nutri/Coarse Cereals,Kharif,2025,192.12,436.78,2273.00
+All India,,Nutri/Coarse Cereals,Rabi,2021,49.61,149.73,3018.00
+All India,,Nutri/Coarse Cereals,Rabi,2022,49.48,159.25,3218.00
+All India,,Nutri/Coarse Cereals,Rabi,2023,54.63,169.16,3097.00
+All India,,Nutri/Coarse Cereals,Rabi,2024,59.05,198.60,3363.00
+All India,,Nutri/Coarse Cereals,Rabi,2025,63.51,248.30,3910.00
+All India,,Nutri/Coarse Cereals,Summer,2022,9.24,38.17,4133.00
+All India,,Nutri/Coarse Cereals,Summer,2023,11.96,44.85,3750.00
+All India,,Nutri/Coarse Cereals,Summer,2024,14.05,51.05,3632.00
+All India,,Nutri/Coarse Cereals,Summer,2025,16.84,59.65,3542.00
+All India,,Nutri/Coarse Cereals,Total,2021,227.00,511.01,2251.00
+All India,,Nutri/Coarse Cereals,Total,2022,240.70,573.19,2381.00
+All India,,Nutri/Coarse Cereals,Total,2023,249.38,569.36,2283.00
+All India,,Nutri/Coarse Cereals,Total,2024,257.55,639.21,2482.00
+All India,,Nutri/Coarse Cereals,Total,2025,272.47,744.72,2733.00
+All India,,Cereals,Kharif,2021,587.77,1471.29,2503.00
+All India,,Cereals,Kharif,2022,586.01,1480.90,2527.00
+All India,,Cereals,Kharif,2023,590.13,1487.94,2521.00
+All India,,Cereals,Kharif,2024,619.10,1617.28,2612.00
+All India,,Cereals,Kharif,2025,638.82,1684.36,2637.00
+All India,,Cereals,Rabi,2021,406.60,1411.85,3472.00
+All India,,Cereals,Rabi,2022,406.77,1414.82,3478.00
+All India,,Cereals,Rabi,2023,413.72,1448.09,3500.00
+All India,,Cereals,Rabi,2024,431.83,1539.33,3565.00
+All India,,Cereals,Rabi,2025,448.50,1635.94,3648.00
+All India,,Cereals,Summer,2022,40.24,140.56,3493.00
+All India,,Cereals,Summer,2023,42.13,144.50,3429.00
+All India,,Cereals,Summer,2024,47.33,163.88,3462.00
+All India,,Cereals,Summer,2025,49.48,171.24,3461.00
+All India,,Cereals,Total,2021,994.37,2883.14,2899.00
+All India,,Cereals,Total,2022,1033.03,3036.28,2939.00
+All India,,Cereals,Total,2023,1045.99,3080.52,2945.00
+All India,,Cereals,Total,2024,1098.26,3320.50,3023.00
+All India,,Cereals,Total,2025,1136.79,3491.54,3071.00
+All India,,Tur,Kharif,2021,49.00,42.20,861.00
+All India,,Tur,Kharif,2022,40.68,33.12,814.00
+All India,,Tur,Kharif,2023,41.31,34.17,827.00
+All India,,Tur,Kharif,2024,43.36,36.24,836.00
+All India,,Tur,Kharif,2025,44.60,35.92,805.00
+All India,,Tur,Total,2021,49.00,42.20,861.00
+All India,,Tur,Total,2022,40.68,33.12,814.00
+All India,,Tur,Total,2023,41.31,34.17,827.00
+All India,,Tur,Total,2024,43.36,36.24,836.00
+All India,,Tur,Total,2025,44.60,35.92,805.00
+All India,,Gram,Rabi,2021,107.40,135.44,1261.00
+All India,,Gram,Rabi,2022,104.71,122.67,1172.00
+All India,,Gram,Rabi,2023,95.87,110.39,1151.00
+All India,,Gram,Rabi,2024,91.22,111.14,1218.00
+All India,,Gram,Rabi,2025,96.60,125.14,1295.00
+All India,,Gram,Total,2021,107.40,135.44,1261.00
+All India,,Gram,Total,2022,104.71,122.67,1172.00
+All India,,Gram,Total,2023,95.87,110.39,1151.00
+All India,,Gram,Total,2024,91.22,111.14,1218.00
+All India,,Gram,Total,2025,96.60,125.14,1295.00
+All India,,Urad,Kharif,2021,36.25,18.65,515.00
+All India,,Urad,Kharif,2022,30.98,17.68,571.00
+All India,,Urad,Kharif,2023,26.81,16.04,598.00
+All India,,Urad,Kharif,2024,21.81,13.41,615.00
+All India,,Urad,Kharif,2025,21.26,11.32,532.00
+All India,,Urad,Rabi,2021,10.09,9.11,903.00
+All India,,Urad,Rabi,2022,6.41,6.33,988.00
+All India,,Urad,Rabi,2023,5.89,4.87,828.00
+All India,,Urad,Rabi,2024,6.18,5.53,894.00
+All India,,Urad,Rabi,2025,6.11,5.70,934.00
+All India,,Urad,Summer,2022,2.63,2.30,875.00
+All India,,Urad,Summer,2023,2.66,2.28,856.00
+All India,,Urad,Summer,2024,3.58,3.48,974.00
+All India,,Urad,Summer,2025,4.34,4.58,1055.00
+All India,,Urad,Total,2021,46.33,27.76,599.00
+All India,,Urad,Total,2022,40.02,26.31,657.00
+All India,,Urad,Total,2023,35.36,23.19,656.00
+All India,,Urad,Total,2024,31.57,22.42,710.00
+All India,,Urad,Total,2025,31.70,21.60,681.00
+All India,,Moong,Kharif,2021,38.43,14.80,385.00
+All India,,Moong,Kharif,2022,34.86,17.18,493.00
+All India,,Moong,Kharif,2023,31.74,11.54,364.00
+All India,,Moong,Kharif,2024,34.14,17.74,520.00
+All India,,Moong,Kharif,2025,37.45,19.32,516.00
+All India,,Moong,Rabi,2021,17.08,16.86,987.00
+All India,,Moong,Rabi,2022,1.50,1.10,730.00
+All India,,Moong,Rabi,2023,1.38,1.01,733.00
+All India,,Moong,Rabi,2024,1.36,1.00,738.00
+All India,,Moong,Rabi,2025,1.48,1.28,865.00
+All India,,Moong,Summer,2022,19.10,18.48,968.00
+All India,,Moong,Summer,2023,18.74,18.47,985.00
+All India,,Moong,Summer,2024,23.49,23.70,1009.00
+All India,,Moong,Summer,2025,22.82,24.31,1065.00
+All India,,Moong,Total,2021,55.51,31.66,570.00
+All India,,Moong,Total,2022,55.46,36.76,663.00
+All India,,Moong,Total,2023,51.87,31.03,598.00
+All India,,Moong,Total,2024,58.99,42.44,719.00
+All India,,Moong,Total,2025,61.76,44.92,727.00
+All India,,Lentil,Rabi,2021,14.12,12.69,899.00
+All India,,Lentil,Rabi,2022,16.37,15.59,952.00
+All India,,Lentil,Rabi,2023,17.43,17.91,1028.00
+All India,,Lentil,Rabi,2024,16.99,16.54,973.00
+All India,,Lentil,Rabi,2025,17.63,17.62,999.00
+All India,,Lentil,Total,2021,14.12,12.69,899.00
+All India,,Lentil,Total,2022,16.37,15.59,952.00
+All India,,Lentil,Total,2023,17.43,17.91,1028.00
+All India,,Lentil,Total,2024,16.99,16.54,973.00
+All India,,Lentil,Total,2025,17.63,17.62,999.00
+All India,,Other Pulses,Kharif,2021,17.51,6.69,382.00
+All India,,Other Pulses,Kharif,2022,14.42,8.24,571.00
+All India,,Other Pulses,Kharif,2023,16.40,7.99,487.00
+All India,,Other Pulses,Kharif,2024,16.75,9.93,593.00
+All India,,Other Pulses,Kharif,2025,15.66,9.46,604.00
+All India,,Other Pulses,Rabi,2021,17.44,16.58,951.00
+All India,,Other Pulses,Rabi,2022,17.34,17.90,1032.00
+All India,,Other Pulses,Rabi,2023,16.82,17.78,1057.00
+All India,,Other Pulses,Rabi,2024,18.33,18.11,988.00
+All India,,Other Pulses,Rabi,2025,18.50,19.44,1051.00
+All India,,Other Pulses,Total,2021,34.95,23.27,666.00
+All India,,Other Pulses,Total,2022,31.77,26.14,823.00
+All India,,Other Pulses,Total,2023,33.22,25.77,776.00
+All India,,Other Pulses,Total,2024,35.08,28.04,799.00
+All India,,Other Pulses,Total,2025,34.16,28.90,846.00
+All India,,Total Pulses,Kharif,2021,141.19,82.35,583.00
+All India,,Total Pulses,Kharif,2022,120.95,76.21,630.00
+All India,,Total Pulses,Kharif,2023,116.25,69.74,600.00
+All India,,Total Pulses,Kharif,2024,116.06,77.33,666.00
+All India,,Total Pulses,Kharif,2025,118.97,76.02,639.00
+All India,,Total Pulses,Rabi,2021,166.12,190.67,1148.00
+All India,,Total Pulses,Rabi,2022,146.33,163.58,1118.00
+All India,,Total Pulses,Rabi,2023,137.39,151.97,1106.00
+All India,,Total Pulses,Rabi,2024,134.08,152.32,1136.00
+All India,,Total Pulses,Rabi,2025,140.32,169.18,1206.00
+All India,,Total Pulses,Summer,2022,21.73,20.79,957.00
+All India,,Total Pulses,Summer,2023,21.41,20.75,969.00
+All India,,Total Pulses,Summer,2024,27.07,27.18,1004.00
+All India,,Total Pulses,Summer,2025,27.16,28.89,1064.00
+All India,,Total Pulses,Total,2021,307.31,273.02,888.00
+All India,,Total Pulses,Total,2022,289.01,260.58,902.00
+All India,,Total Pulses,Total,2023,275.05,242.46,881.00
+All India,,Total Pulses,Total,2024,277.20,256.83,926.00
+All India,,Total Pulses,Total,2025,286.46,274.09,957.00
+All India,,Total Food Grains,Kharif,2021,728.96,1553.64,2131.00
+All India,,Total Food Grains,Kharif,2022,706.96,1557.11,2203.00
+All India,,Total Food Grains,Kharif,2023,706.39,1557.68,2205.00
+All India,,Total Food Grains,Kharif,2024,735.16,1694.60,2305.00
+All India,,Total Food Grains,Kharif,2025,757.79,1760.38,2323.00
+All India,,Total Food Grains,Rabi,2021,572.72,1602.52,2798.00
+All India,,Total Food Grains,Rabi,2022,553.10,1578.41,2854.00
+All India,,Total Food Grains,Rabi,2023,551.11,1600.06,2903.00
+All India,,Total Food Grains,Rabi,2024,565.91,1691.66,2989.00
+All India,,Total Food Grains,Rabi,2025,588.82,1805.12,3066.00
+All India,,Total Food Grains,Summer,2022,61.97,161.35,2603.00
+All India,,Total Food Grains,Summer,2023,63.54,165.24,2601.00
+All India,,Total Food Grains,Summer,2024,74.40,191.06,2568.00
+All India,,Total Food Grains,Summer,2025,76.64,200.13,2611.00
+All India,,Total Food Grains,Total,2021,1301.69,3156.16,2425.00
+All India,,Total Food Grains,Total,2022,1322.04,3296.87,2494.00
+All India,,Total Food Grains,Total,2023,1321.04,3322.98,2515.00
+All India,,Total Food Grains,Total,2024,1375.46,3577.32,2601.00
+All India,,Total Food Grains,Total,2025,1423.25,3765.63,2646.00
+All India,,Groundnut,Kharif,2021,49.13,84.34,1717.00
+All India,,Groundnut,Kharif,2022,42.63,85.62,2009.00
+All India,,Groundnut,Kharif,2023,40.44,86.60,2142.00
+All India,,Groundnut,Kharif,2024,50.05,104.12,2080.00
+All India,,Groundnut,Kharif,2025,50.29,113.42,2255.00
+All India,,Groundnut,Rabi,2021,7.92,17.01,2147.00
+All India,,Groundnut,Rabi,2022,4.21,11.03,2619.00
+All India,,Groundnut,Rabi,2023,3.42,7.55,2208.00
+All India,,Groundnut,Rabi,2024,3.37,6.78,2011.00
+All India,,Groundnut,Rabi,2025,3.16,7.59,2404.00
+All India,,Groundnut,Summer,2022,2.77,6.32,2279.00
+All India,,Groundnut,Summer,2023,3.22,7.65,2377.00
+All India,,Groundnut,Summer,2024,4.20,8.52,2029.00
+All India,,Groundnut,Summer,2025,5.23,9.73,1861.00
+All India,,Groundnut,Total,2021,57.05,101.35,1777.00
+All India,,Groundnut,Total,2022,49.61,102.97,2075.00
+All India,,Groundnut,Total,2023,47.07,101.80,2163.00
+All India,,Groundnut,Total,2024,57.62,119.42,2073.00
+All India,,Groundnut,Total,2025,58.67,130.74,2228.00
+All India,,Castorseed,Kharif,2021,8.31,16.19,1948.00
+All India,,Castorseed,Kharif,2022,10.19,19.80,1942.00
+All India,,Castorseed,Kharif,2023,10.41,19.59,1881.00
+All India,,Castorseed,Kharif,2024,9.65,17.86,1852.00
+All India,,Castorseed,Kharif,2025,10.89,21.57,1981.00
+All India,,Castorseed,Total,2021,8.31,16.19,1948.00
+All India,,Castorseed,Total,2022,10.19,19.80,1942.00
+All India,,Castorseed,Total,2023,10.41,19.59,1881.00
+All India,,Castorseed,Total,2024,9.65,17.86,1852.00
+All India,,Castorseed,Total,2025,10.89,21.57,1981.00
+All India,,Sesamum,Kharif,2021,16.27,7.89,485.00
+All India,,Sesamum,Kharif,2022,10.43,3.92,375.00
+All India,,Sesamum,Kharif,2023,10.08,3.95,392.00
+All India,,Sesamum,Kharif,2024,10.39,4.44,427.00
+All India,,Sesamum,Kharif,2025,9.63,4.52,470.00
+All India,,Sesamum,Rabi,2022,0.53,0.31,592.00
+All India,,Sesamum,Rabi,2023,0.49,0.28,559.00
+All India,,Sesamum,Rabi,2024,0.41,0.19,467.00
+All India,,Sesamum,Rabi,2025,0.57,0.31,535.00
+All India,,Sesamum,Summer,2022,4.27,3.79,888.00
+All India,,Sesamum,Summer,2023,4.74,4.24,896.00
+All India,,Sesamum,Summer,2024,4.96,4.31,867.00
+All India,,Sesamum,Summer,2025,5.04,4.51,895.00
+All India,,Sesamum,Total,2021,16.27,7.89,485.00
+All India,,Sesamum,Total,2022,15.23,8.02,527.00
+All India,,Sesamum,Total,2023,15.31,8.47,553.00
+All India,,Sesamum,Total,2024,15.76,8.93,567.00
+All India,,Sesamum,Total,2025,15.24,9.34,613.00
+All India,,Nigerseed,Kharif,2021,0.97,0.33,337.00
+All India,,Nigerseed,Kharif,2022,0.88,0.29,325.00
+All India,,Nigerseed,Kharif,2023,0.83,0.27,323.00
+All India,,Nigerseed,Kharif,2024,1.01,0.40,394.00
+All India,,Nigerseed,Kharif,2025,0.83,0.32,382.00
+All India,,Nigerseed,Total,2021,0.97,0.33,337.00
+All India,,Nigerseed,Total,2022,0.88,0.29,325.00
+All India,,Nigerseed,Total,2023,0.83,0.27,323.00
+All India,,Nigerseed,Total,2024,1.01,0.40,394.00
+All India,,Nigerseed,Total,2025,0.83,0.32,382.00
+All India,,Soybean,Kharif,2021,121.47,129.87,1069.00
+All India,,Soybean,Kharif,2022,130.84,149.85,1145.00
+All India,,Soybean,Kharif,2023,132.55,130.62,985.00
+All India,,Soybean,Kharif,2024,129.52,152.68,1179.00
+All India,,Soybean,Kharif,2025,123.86,125.96,1017.00
+All India,,Soybean,Total,2021,121.47,129.87,1069.00
+All India,,Soybean,Total,2022,130.84,149.85,1145.00
+All India,,Soybean,Total,2023,132.55,130.62,985.00
+All India,,Soybean,Total,2024,129.52,152.68,1179.00
+All India,,Soybean,Total,2025,123.86,125.96,1017.00
+All India,,Sunflower,Kharif,2021,1.38,1.11,802.00
+All India,,Sunflower,Kharif,2022,2.18,2.04,933.00
+All India,,Sunflower,Kharif,2023,0.67,0.60,894.00
+All India,,Sunflower,Kharif,2024,0.78,0.72,925.00
+All India,,Sunflower,Kharif,2025,0.88,0.88,997.00
+All India,,Sunflower,Rabi,2021,1.33,1.39,1048.00
+All India,,Sunflower,Rabi,2022,1.10,1.17,1061.00
+All India,,Sunflower,Rabi,2023,0.53,0.74,1397.00
+All India,,Sunflower,Rabi,2024,0.81,1.21,1481.00
+All India,,Sunflower,Rabi,2025,1.03,1.38,1350.00
+All India,,Sunflower,Summer,2022,0.36,0.43,1181.00
+All India,,Sunflower,Summer,2023,0.32,0.39,1247.00
+All India,,Sunflower,Summer,2024,0.35,0.43,1241.00
+All India,,Sunflower,Summer,2025,0.35,0.44,1277.00
+All India,,Sunflower,Total,2021,2.71,2.50,923.00
+All India,,Sunflower,Total,2022,3.64,3.63,996.00
+All India,,Sunflower,Total,2023,1.51,1.73,1144.00
+All India,,Sunflower,Total,2024,1.94,2.36,1214.00
+All India,,Sunflower,Total,2025,2.25,2.70,1201.00
+All India,,Rapeseed & Mustard,Rabi,2021,79.91,119.63,1497.00
+All India,,Rapeseed & Mustard,Rabi,2022,88.52,126.43,1428.00
+All India,,Rapeseed & Mustard,Rabi,2023,91.83,132.59,1444.00
+All India,,Rapeseed & Mustard,Rabi,2024,86.57,126.67,1463.00
+All India,,Rapeseed & Mustard,Rabi,2025,94.27,137.68,1460.00
+All India,,Rapeseed & Mustard,Total,2021,79.91,119.63,1497.00
+All India,,Rapeseed & Mustard,Total,2022,88.52,126.43,1428.00
+All India,,Rapeseed & Mustard,Total,2023,91.83,132.59,1444.00
+All India,,Rapeseed & Mustard,Total,2024,86.57,126.67,1463.00
+All India,,Rapeseed & Mustard,Total,2025,94.27,137.68,1460.00
+All India,,Linseed,Rabi,2021,1.97,1.26,642.00
+All India,,Linseed,Rabi,2022,2.39,1.67,698.00
+All India,,Linseed,Rabi,2023,1.75,1.13,644.00
+All India,,Linseed,Rabi,2024,1.69,1.12,666.00
+All India,,Linseed,Rabi,2025,1.94,1.61,828.00
+All India,,Linseed,Total,2021,1.97,1.26,642.00
+All India,,Linseed,Total,2022,2.39,1.67,698.00
+All India,,Linseed,Total,2023,1.75,1.13,644.00
+All India,,Linseed,Total,2024,1.69,1.12,666.00
+All India,,Linseed,Total,2025,1.94,1.61,828.00
+All India,,Safflower,Rabi,2021,0.79,0.61,777.00
+All India,,Safflower,Rabi,2022,1.09,0.90,826.00
+All India,,Safflower,Rabi,2023,0.65,0.50,768.00
+All India,,Safflower,Rabi,2024,0.64,0.43,672.00
+All India,,Safflower,Rabi,2025,0.90,0.66,736.00
+All India,,Safflower,Total,2021,0.79,0.61,777.00
+All India,,Safflower,Total,2022,1.09,0.90,826.00
+All India,,Safflower,Total,2023,0.65,0.50,768.00
+All India,,Safflower,Total,2024,0.64,0.43,672.00
+All India,,Safflower,Total,2025,0.90,0.66,736.00
+All India,,Total Oil Seeds,Kharif,2021,197.53,239.72,1214.00
+All India,,Total Oil Seeds,Kharif,2022,197.15,261.50,1326.00
+All India,,Total Oil Seeds,Kharif,2023,194.98,241.62,1239.00
+All India,,Total Oil Seeds,Kharif,2024,201.40,280.23,1391.00
+All India,,Total Oil Seeds,Kharif,2025,196.38,266.68,1358.00
+All India,,Total Oil Seeds,Rabi,2021,91.92,139.91,1522.00
+All India,,Total Oil Seeds,Rabi,2022,97.83,141.51,1446.00
+All India,,Total Oil Seeds,Rabi,2023,98.68,142.78,1447.00
+All India,,Total Oil Seeds,Rabi,2024,93.49,136.40,1459.00
+All India,,Total Oil Seeds,Rabi,2025,101.86,149.22,1465.00
+All India,,Total Oil Seeds,Summer,2022,7.41,10.54,1423.00
+All India,,Total Oil Seeds,Summer,2023,8.27,12.29,1486.00
+All India,,Total Oil Seeds,Summer,2024,9.51,13.26,1394.00
+All India,,Total Oil Seeds,Summer,2025,10.62,14.69,1383.00
+All India,,Total Oil Seeds,Total,2021,289.45,379.63,1312.00
+All India,,Total Oil Seeds,Total,2022,302.39,413.55,1368.00
+All India,,Total Oil Seeds,Total,2023,301.92,396.69,1314.00
+All India,,Total Oil Seeds,Total,2024,304.40,429.89,1412.00
+All India,,Total Oil Seeds,Total,2025,308.86,430.59,1394.00
+All India,,Sugarcane,Kharif,2021,51.75,4394.25,84906.00
+All India,,Sugarcane,Kharif,2022,58.85,4905.33,83349.00
+All India,,Sugarcane,Kharif,2023,57.40,4531.58,78953.00
+All India,,Sugarcane,Kharif,2024,54.50,4546.11,83416.00
+All India,,Sugarcane,Kharif,2025,58.84,5000.63,84987.00
+All India,,Sugarcane,Total,2021,51.75,4394.25,84906.00
+All India,,Sugarcane,Total,2022,58.85,4905.33,83349.00
+All India,,Sugarcane,Total,2023,57.40,4531.58,78953.00
+All India,,Sugarcane,Total,2024,54.50,4546.11,83416.00
+All India,,Sugarcane,Total,2025,58.84,5000.63,84987.00
+All India,,Cotton,Kharif,2021,123.72,311.18,428.00
+All India,,Cotton,Kharif,2022,129.27,336.60,443.00
+All India,,Cotton,Kharif,2023,126.88,325.22,436.00
+All India,,Cotton,Kharif,2024,114.84,297.24,440.00
+All India,,Cotton,Kharif,2025,115.25,290.24,428.00
+All India,,Cotton,Total,2021,123.72,311.18,428.00
+All India,,Cotton,Total,2022,129.27,336.60,443.00
+All India,,Cotton,Total,2023,126.88,325.22,436.00
+All India,,Cotton,Total,2024,114.84,297.24,440.00
+All India,,Cotton,Total,2025,115.25,290.24,428.00
+All India,,Jute,Kharif,2021,6.29,97.62,2793.00
+All India,,Jute,Kharif,2022,6.19,89.89,2614.00
+All India,,Jute,Kharif,2023,5.98,92.52,2783.00
+All India,,Jute,Kharif,2024,5.44,84.88,2807.00
+All India,,Jute,Kharif,2025,5.83,91.76,2833.00
+All India,,Jute,Total,2021,6.29,97.62,2793.00
+All India,,Jute,Total,2022,6.19,89.89,2614.00
+All India,,Jute,Total,2023,5.98,92.52,2783.00
+All India,,Jute,Total,2024,5.44,84.88,2807.00
+All India,,Jute,Total,2025,5.83,91.76,2833.00
+All India,,Mesta,Kharif,2021,0.38,3.87,1831.00
+All India,,Mesta,Kharif,2022,0.39,4.03,1871.00
+All India,,Mesta,Kharif,2023,0.39,4.41,2033.00
+All India,,Mesta,Kharif,2024,0.30,3.13,1864.00
+All India,,Mesta,Kharif,2025,0.23,2.27,1784.00
+All India,,Mesta,Total,2021,0.38,3.87,1831.00
+All India,,Mesta,Total,2022,0.39,4.03,1871.00
+All India,,Mesta,Total,2023,0.39,4.41,2033.00
+All India,,Mesta,Total,2024,0.30,3.13,1864.00
+All India,,Mesta,Total,2025,0.23,2.27,1784.00
+All India,,Jute & Mesta,Kharif,2021,6.67,101.49,2738.00
+All India,,Jute & Mesta,Kharif,2022,6.58,93.92,2570.00
+All India,,Jute & Mesta,Kharif,2023,6.37,96.92,2737.00
+All India,,Jute & Mesta,Kharif,2024,5.74,88.02,2758.00
+All India,,Jute & Mesta,Kharif,2025,6.06,94.03,2793.00
+All India,,Jute & Mesta,Total,2021,6.67,101.49,2738.00
+All India,,Jute & Mesta,Total,2022,6.58,93.92,2570.00
+All India,,Jute & Mesta,Total,2023,6.37,96.92,2737.00
+All India,,Jute & Mesta,Total,2024,5.74,88.02,2758.00
+All India,,Jute & Mesta,Total,2025,6.06,94.03,2793.00

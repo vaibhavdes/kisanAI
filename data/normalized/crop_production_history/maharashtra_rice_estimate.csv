@@ -1,0 +1,16 @@
+state,district,crop,season,crop_year,area_hectare,production_tonne,yield_kg_per_hectare
+Maharashtra,,Rice,Kharif,2021,15.49,32.95,2127.00
+Maharashtra,,Rice,Kharif,2022,15.55,34.54,2221.00
+Maharashtra,,Rice,Kharif,2023,15.25,34.63,2270.00
+Maharashtra,,Rice,Kharif,2024,15.21,34.30,2255.00
+Maharashtra,,Rice,Kharif,2025,15.19,29.43,1938.00
+Maharashtra,,Rice,Rabi,2021,1.03,3.03,2954.00
+Maharashtra,,Rice,Summer,2022,1.63,4.45,2732.00
+Maharashtra,,Rice,Summer,2023,1.68,4.37,2611.00
+Maharashtra,,Rice,Summer,2024,1.61,4.37,2716.00
+Maharashtra,,Rice,Summer,2025,1.68,4.57,2716.00
+Maharashtra,,Rice,Total,2021,16.52,35.98,2178.00
+Maharashtra,,Rice,Total,2022,17.18,38.99,2269.00
+Maharashtra,,Rice,Total,2023,16.93,39.00,2304.00
+Maharashtra,,Rice,Total,2024,16.82,38.67,2299.00
+Maharashtra,,Rice,Total,2025,16.87,34.00,2016.00
