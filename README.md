@@ -1,8 +1,8 @@
-# Kisan Alert
+# Kisan AI
 
 Track 4: Smart Water, Crop and Advisory System.
 
-Kisan Alert is a FastAPI + React Native prototype for small and marginal farmers. It supports multilingual farmer conversations through the app, WhatsApp-style channels, SMS and voice-call flows, with Google Cloud AI, Earth Engine, BigQuery public data and provider fallbacks.
+Kisan AI is a FastAPI + React Native prototype for small and marginal farmers. It supports multilingual farmer conversations through the app, WhatsApp-style channels, SMS and voice-call flows, with Google Cloud AI, Earth Engine, BigQuery public data and provider fallbacks.
 
 ## Demo Flow
 
@@ -61,7 +61,7 @@ flowchart LR
 
 ## Google Cloud And Service Usage
 
-| Hackathon capability | How Kisan Alert uses it |
+| Hackathon capability | How Kisan AI uses it |
 |---|---|
 | Gemini API / Google AI Studio | Fallback LLM and Gemini Vision path for advisory and image diagnosis when Vertex route is unavailable. |
 | Vertex AI | Primary GenAI route for advisory/vision in live mode. We use strong prompts plus farmer/context data, not decorative AI responses. |
@@ -203,7 +203,7 @@ IMD_API_KEY=
 OPEN_METEO_BASE_URL=https://api.open-meteo.com/v1/forecast
 ```
 
-`DIALOGFLOW_AGENT_ID` must be the Dialogflow CX agent UUID from Google Cloud Console, not only the display name.
+`DIALOGFLOW_AGENT_ID` must be the Dialogflow CX agent UUID from Google Cloud Console, not only the display name. Keep `DIALOGFLOW_ROUTING_ENABLED=false` until the agent is visible in the same Google project and location as the backend config.
 
 How to get Dialogflow values:
 
@@ -219,9 +219,21 @@ How to get Dialogflow values:
 CLI alternative after `gcloud init`:
 
 ```bash
+gcloud auth application-default login
+gcloud auth application-default set-quota-project kisanai-501120
+
+# If alpha components are installed:
 gcloud alpha dialogflow cx agents list --location=global --project=kisanai-501120
 gcloud alpha dialogflow cx environments list --location=global --agent=AGENT_UUID --project=kisanai-501120
+
+# REST check without installing alpha components:
+TOKEN=$(gcloud auth print-access-token)
+curl -H "Authorization: Bearer $TOKEN" \
+  -H "X-Goog-User-Project: kisanai-501120" \
+  "https://dialogflow.googleapis.com/v3/projects/kisanai-501120/locations/global/agents"
 ```
+
+If the REST response is `{}`, the backend cannot use Dialogflow yet because no CX agent is visible in that project/location. Create or select the agent in project `kisanai-501120`, copy its UUID, set `DIALOGFLOW_AGENT_ID`, set `DIALOGFLOW_ROUTING_ENABLED=true`, leave `DIALOGFLOW_ENVIRONMENT_ID` blank unless an environment UUID exists, then redeploy.
 
 ## AI Brain And Fine-Tuning
 
@@ -246,7 +258,22 @@ pip install -r requirements.txt
 pip install -e ".[dev]"
 ```
 
-Local/offline backend, no Google/provider calls:
+Configure Google Cloud CLI for live mode/deployment:
+
+```bash
+gcloud init
+gcloud config set project kisanai-501120
+gcloud auth application-default login
+gcloud auth application-default set-quota-project kisanai-501120
+gcloud services enable \
+  run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com \
+  firestore.googleapis.com bigquery.googleapis.com storage.googleapis.com \
+  aiplatform.googleapis.com dialogflow.googleapis.com \
+  speech.googleapis.com texttospeech.googleapis.com translate.googleapis.com \
+  pubsub.googleapis.com cloudscheduler.googleapis.com secretmanager.googleapis.com
+```
+
+Local/offline backend, no Google/provider calls. Use this for fast development without `.env` secrets:
 
 ```bash
 cd backend

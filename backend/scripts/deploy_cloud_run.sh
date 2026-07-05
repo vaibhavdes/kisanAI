@@ -75,7 +75,7 @@ gcloud services enable \
 
 if ! gcloud iam service-accounts describe "${SERVICE_ACCOUNT_EMAIL}" >/dev/null 2>&1; then
   gcloud iam service-accounts create "${SERVICE_ACCOUNT_NAME}" \
-    --display-name="Kisan Alert Cloud Run service account"
+    --display-name="Kisan AI Cloud Run service account"
 fi
 
 for role in \

@@ -9,7 +9,7 @@ ADMIN_HTML = """<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Kisan Alert Admin</title>
+  <title>Kisan AI Admin</title>
   <style>
     :root {
       color-scheme: light;
@@ -150,7 +150,7 @@ ADMIN_HTML = """<!doctype html>
 <body>
   <header>
     <div>
-      <h1>Kisan Alert Admin</h1>
+      <h1>Kisan AI Admin</h1>
       <div class="status" id="updatedAt">Loading provider configuration...</div>
     </div>
     <button class="secondary" id="refreshBtn">Refresh</button>

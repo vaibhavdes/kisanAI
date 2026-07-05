@@ -1,4 +1,4 @@
-# Kisan Alert React Native Chat
+# Kisan AI React Native Chat
 
 Expo React Native farmer chat prototype for Android and web.
 
@@ -62,6 +62,8 @@ EXPO_PUBLIC_API_URL=http://192.168.1.20:8080 npm start
 
 - Phone and language onboarding.
 - Mobile-first WhatsApp-like chat UI.
+- Phrase-level UI translations for English, Hindi, Marathi, Telugu, Tamil, Kannada and Gujarati.
+- Location/state-based language suggestion when location permission is already available or when the farmer shares location.
 - Text, image, audio and location messages to the app endpoint `/api/v1/chat/message`.
 - Provider WhatsApp webhooks remain separate at `/api/v1/whatsapp/webhook` and `/api/v1/twilio/whatsapp`.
 - Location permission and coordinate sharing through Expo Location.

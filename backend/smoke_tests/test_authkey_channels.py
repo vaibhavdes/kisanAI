@@ -69,7 +69,7 @@ results = [
         mobile=mobile,
         country_code=country_code,
         template_id=media_template_id,
-        header_file_name="KisanAlert",
+        header_file_name="KisanAI",
         header_data_url="https://www.gstatic.com/webp/gallery/1.jpg",
         dry_run=not send_enabled,
     ),

@@ -3,11 +3,11 @@ import { Platform } from "react-native";
 
 declare global {
   interface Window {
-    KISAN_ALERT_API_URL?: string;
+    KISAN_AI_API_URL?: string;
   }
 }
 
-const runtimeUrl = typeof window !== "undefined" ? window.KISAN_ALERT_API_URL : undefined;
+const runtimeUrl = typeof window !== "undefined" ? window.KISAN_AI_API_URL : undefined;
 const fallbackUrl =
   runtimeUrl ||
   process.env.EXPO_PUBLIC_API_URL ||

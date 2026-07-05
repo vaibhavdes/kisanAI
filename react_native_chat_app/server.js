@@ -41,7 +41,7 @@ createServer((request, response) => {
     const apiUrl = JSON.stringify(process.env.EXPO_PUBLIC_API_URL || "");
     const html = readFileSync(file, "utf8").replace(
       "</head>",
-      `<script>window.KISAN_ALERT_API_URL=${apiUrl};</script></head>`,
+      `<script>window.KISAN_AI_API_URL=${apiUrl};</script></head>`,
     );
     response.writeHead(200, {
       "Content-Type": "text/html; charset=utf-8",
@@ -56,5 +56,5 @@ createServer((request, response) => {
   });
   createReadStream(file).pipe(response);
 }).listen(port, "0.0.0.0", () => {
-  console.log(`Kisan Alert frontend listening on ${port}`);
+  console.log(`Kisan AI frontend listening on ${port}`);
 });

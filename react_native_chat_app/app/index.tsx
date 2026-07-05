@@ -27,6 +27,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiBaseUrl, sendChatMessage } from "@/api/client";
 import { languages } from "@/constants/languages";
+import { autoLanguageCode, copyLanguage, languageForState, uiCopy } from "@/i18n/ui";
 import type { ChatMessage, ChatPayload, ChatResponse } from "@/types/chat";
 
 const whatsAppGreen = "#075e54";
@@ -35,23 +36,58 @@ const bubbleMine = "#dcf8c6";
 const bubbleTheirs = "#ffffff";
 const wallpaper = "#efe7da";
 const border = "#d9d4c8";
-const autoLanguageCode = "auto";
 
 export default function IndexScreen() {
   const [phone, setPhone] = useState("");
   const [language, setLanguage] = useState(autoLanguageCode);
+  const [languageTouched, setLanguageTouched] = useState(false);
+  const [suggestedLanguage, setSuggestedLanguage] = useState<string | undefined>();
   const [started, setStarted] = useState(false);
+  const copy = uiCopy(copyLanguage(language === autoLanguageCode && suggestedLanguage ? suggestedLanguage : language));
+
+  useEffect(() => {
+    let active = true;
+    async function detectLastKnownState() {
+      try {
+        const permission = await Location.getForegroundPermissionsAsync();
+        if (!permission.granted) return;
+        const position = await Location.getLastKnownPositionAsync({});
+        if (!position) return;
+        const [address] = await Location.reverseGeocodeAsync(position.coords);
+        const detected = languageForState(address?.region);
+        if (active && detected) {
+          setSuggestedLanguage(detected);
+          if (!languageTouched && language === autoLanguageCode) {
+            setLanguage(detected);
+          }
+        }
+      } catch {
+        // Location-based language is only a convenience. Chat still works without it.
+      }
+    }
+    detectLastKnownState();
+    return () => {
+      active = false;
+    };
+  }, [language, languageTouched]);
+
+  function changeLanguage(value: string) {
+    setLanguageTouched(true);
+    setLanguage(value);
+  }
 
   if (!started) {
     return (
       <OnboardingScreen
         phone={phone}
         language={language}
+        suggestedLanguage={suggestedLanguage}
+        copy={copy}
         onPhoneChange={setPhone}
-        onLanguageChange={setLanguage}
+        onLanguageChange={changeLanguage}
         onStart={() => {
           if (!phone.trim()) {
-            Alert.alert("Phone number required", "Enter the farmer phone number to start.");
+            Alert.alert(copy.phoneRequiredTitle, copy.phoneRequiredMessage);
             return;
           }
           setStarted(true);
@@ -60,18 +96,36 @@ export default function IndexScreen() {
     );
   }
 
-  return <ChatScreen phone={phone.trim()} language={language} onLanguageChange={setLanguage} />;
+  return (
+    <ChatScreen
+      phone={phone.trim()}
+      language={language}
+      suggestedLanguage={suggestedLanguage}
+      copy={copy}
+      onLanguageChange={changeLanguage}
+      onStateLanguageDetected={(value) => {
+        setSuggestedLanguage(value);
+        if (!languageTouched && language === autoLanguageCode) {
+          setLanguage(value);
+        }
+      }}
+    />
+  );
 }
 
 function OnboardingScreen({
   phone,
   language,
+  suggestedLanguage,
+  copy,
   onPhoneChange,
   onLanguageChange,
   onStart,
 }: {
   phone: string;
   language: string;
+  suggestedLanguage?: string;
+  copy: ReturnType<typeof uiCopy>;
   onPhoneChange: (value: string) => void;
   onLanguageChange: (value: string) => void;
   onStart: () => void;
@@ -105,20 +159,20 @@ function OnboardingScreen({
           }}
         >
           <Text selectable={false} style={{ color: "#fff", fontSize: 25, fontWeight: "900" }}>
-            KA
+            AI
           </Text>
         </View>
         <Text selectable style={{ fontSize: 34, fontWeight: "900", color: "#172017" }}>
-          Kisan Alert
+          {copy.appName}
         </Text>
         <Text selectable style={{ color: "#526052", fontSize: 16, lineHeight: 23 }}>
-          WhatsApp-style farmer advisory chat for voice, photos, location and SMS-ready support.
+          {copy.appTagline}
         </Text>
       </View>
 
       <View style={{ gap: 10 }}>
         <Text selectable style={{ fontWeight: "800", color: "#263426" }}>
-          Farmer phone
+          {copy.farmerPhone}
         </Text>
         <TextInput
           value={phone}
@@ -140,11 +194,12 @@ function OnboardingScreen({
 
       <View style={{ gap: 10 }}>
         <Text selectable style={{ fontWeight: "800", color: "#263426" }}>
-          Reply language
+          {copy.replyLanguage}
         </Text>
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 9 }}>
           {languageOptions.map((item) => {
             const selected = language === item.code;
+            const suggested = suggestedLanguage === item.code;
             return (
               <Pressable
                 key={item.code}
@@ -154,19 +209,20 @@ function OnboardingScreen({
                   paddingVertical: 10,
                   borderRadius: 999,
                   borderWidth: 1,
-                  borderColor: selected ? whatsAppLightGreen : border,
+                  borderColor: selected ? whatsAppLightGreen : suggested ? "#d4a62d" : border,
                   backgroundColor: selected ? "#dff4eb" : "#fff",
                 }}
               >
                 <Text selectable={false} style={{ color: selected ? whatsAppGreen : "#263426", fontWeight: "800" }}>
-                  {item.label}
+                  {item.code === autoLanguageCode ? copy.autoLanguage : item.label}
                 </Text>
               </Pressable>
             );
           })}
         </View>
         <Text selectable style={{ color: "#667266", fontSize: 12, lineHeight: 17 }}>
-          Auto lets the backend detect the farmer language from text when Google Translation is enabled.
+          {copy.autoLanguageHint}
+          {suggestedLanguage ? ` ${copy.suggestedLanguage}: ${languageLabel(suggestedLanguage)}.` : ""}
         </Text>
       </View>
 
@@ -183,7 +239,7 @@ function OnboardingScreen({
         }}
       >
         <Text selectable={false} style={{ color: "#fff", fontWeight: "900", fontSize: 16 }}>
-          Start chat
+          {copy.startChat}
         </Text>
       </Pressable>
     </ScrollView>
@@ -193,11 +249,17 @@ function OnboardingScreen({
 function ChatScreen({
   phone,
   language,
+  suggestedLanguage,
+  copy,
   onLanguageChange,
+  onStateLanguageDetected,
 }: {
   phone: string;
   language: string;
+  suggestedLanguage?: string;
+  copy: ReturnType<typeof uiCopy>;
   onLanguageChange: (value: string) => void;
+  onStateLanguageDetected: (language: string) => void;
 }) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -210,12 +272,18 @@ function ChatScreen({
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: "welcome",
-      text: "Namaste. Send a message, crop photo, voice note, or farm location.",
+      text: copy.welcome,
       mine: false,
       kind: "system",
       time: currentTime(),
     },
   ]);
+
+  useEffect(() => {
+    setMessages((current) =>
+      current.map((message) => (message.id === "welcome" ? { ...message, text: copy.welcome } : message)),
+    );
+  }, [copy.welcome]);
 
   useEffect(() => {
     scrollRef.current?.scrollToEnd({ animated: true });
@@ -234,7 +302,7 @@ function ChatScreen({
       setMessages((current) =>
         current.map((message) => (message.id === localId ? { ...message, status: "sent" } : message)),
       );
-      setMessages((current) => [...current, responseToMessage(response)]);
+      setMessages((current) => [...current, responseToMessage(response, copy)]);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Backend request failed.";
       setMessages((current) =>
@@ -244,7 +312,7 @@ function ChatScreen({
         ...current,
         {
           id: `${Date.now()}-error`,
-          text: `Could not reach backend at ${apiBaseUrl}. ${message}`,
+          text: `${copy.backendFailed} at ${apiBaseUrl}. ${message}`,
           mine: false,
           kind: "system",
           intent: "error",
@@ -279,15 +347,22 @@ function ChatScreen({
     setAttachmentsOpen(false);
     const permission = await Location.requestForegroundPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert("Location permission needed", "Allow location to share the farm point.");
+      Alert.alert(copy.locationPermissionTitle, copy.locationPermissionMessage);
       return;
     }
     const position = await Location.getCurrentPositionAsync({});
+    try {
+      const [address] = await Location.reverseGeocodeAsync(position.coords);
+      const detected = languageForState(address?.region);
+      if (detected) onStateLanguageDetected(detected);
+    } catch {
+      // Reverse geocoding is optional for the chat request.
+    }
     const coords = `${position.coords.latitude.toFixed(5)}, ${position.coords.longitude.toFixed(5)}`;
     await sendPayload(
       {
         id: `${Date.now()}-location`,
-        text: `Farm location shared\n${coords}`,
+        text: `${copy.locationShared}\n${coords}`,
         mine: true,
         kind: "location",
       },
@@ -295,7 +370,7 @@ function ChatScreen({
         from_phone: phone,
         latitude: position.coords.latitude,
         longitude: position.coords.longitude,
-        location_label: "Shared from Kisan Alert app",
+        location_label: copy.locationLabel,
       },
     );
   }
@@ -307,7 +382,7 @@ function ChatScreen({
       ? await ImagePicker.requestCameraPermissionsAsync()
       : await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert("Photo permission needed", "Allow photo access to send a crop image.");
+      Alert.alert(copy.photoPermissionTitle, copy.photoPermissionMessage);
       return;
     }
 
@@ -321,7 +396,7 @@ function ChatScreen({
 
     if (result.canceled || !result.assets[0]) return;
     const asset = result.assets[0];
-    const caption = input.trim() || "Crop photo for diagnosis";
+    const caption = input.trim() || copy.cropPhotoCaption;
     setInput("");
     await sendPayload(
       {
@@ -350,7 +425,7 @@ function ChatScreen({
     }
     const permission = await AudioModule.requestRecordingPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert("Microphone permission needed", "Allow microphone access to send a voice note.");
+      Alert.alert(copy.microphonePermissionTitle, copy.microphonePermissionMessage);
       return;
     }
     await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: true });
@@ -362,7 +437,7 @@ function ChatScreen({
     await audioRecorder.stop();
     const uri = audioRecorder.uri || recorderState.url;
     if (!uri) {
-      Alert.alert("Voice note failed", "Recording finished but no audio file was created.");
+      Alert.alert(copy.voiceFailedTitle, copy.voiceFailedMessage);
       return;
     }
     const typedCaption = input.trim();
@@ -371,7 +446,7 @@ function ChatScreen({
     await sendPayload(
       {
         id: `${Date.now()}-audio`,
-        text: typedCaption || voiceDurationLabel(recorderState.durationMillis),
+        text: typedCaption || copy.voiceNote(Math.max(1, Math.round(recorderState.durationMillis / 1000))),
         mine: true,
         kind: "audio",
         audioUri: uri,
@@ -415,18 +490,18 @@ function ChatScreen({
           }}
         >
           <Text selectable={false} style={{ color: "#fff", fontSize: 14, fontWeight: "900" }}>
-            KA
+            AI
           </Text>
         </View>
         <View style={{ flex: 1 }}>
           <Text selectable style={{ color: "#fff", fontSize: 17, fontWeight: "900" }} numberOfLines={1}>
-            Kisan Alert
+            {copy.appName}
           </Text>
           <Text selectable style={{ color: "#d4eee8", fontSize: 12 }} numberOfLines={1}>
-            {phone} · {language === autoLanguageCode ? "Auto language" : languageLabel(language)}
+            {phone} · {language === autoLanguageCode ? copy.autoLanguageShort : languageLabel(language)}
           </Text>
         </View>
-        <LanguageMenu value={language} onChange={onLanguageChange} />
+        <LanguageMenu value={language} suggestedLanguage={suggestedLanguage} copy={copy} onChange={onLanguageChange} />
       </View>
 
       <ScrollView
@@ -451,7 +526,7 @@ function ChatScreen({
           </Text>
         </View>
         {messages.map((message) => (
-          <MessageBubble key={message.id} message={message} maxWidth={maxBubbleWidth} />
+          <MessageBubble key={message.id} message={message} maxWidth={maxBubbleWidth} copy={copy} />
         ))}
       </ScrollView>
 
@@ -470,9 +545,9 @@ function ChatScreen({
             boxShadow: "0 4px 14px rgba(0,0,0,0.13)",
           }}
         >
-          <AttachmentAction label="Camera" icon="📷" onPress={() => attachPhoto(true)} />
-          <AttachmentAction label="Gallery" icon="🖼" onPress={() => attachPhoto(false)} />
-          <AttachmentAction label="Location" icon="📍" onPress={shareLocation} />
+          <AttachmentAction label={copy.camera} icon="📷" onPress={() => attachPhoto(true)} />
+          <AttachmentAction label={copy.gallery} icon="🖼" onPress={() => attachPhoto(false)} />
+          <AttachmentAction label={copy.location} icon="📍" onPress={shareLocation} />
         </View>
       ) : null}
 
@@ -523,7 +598,7 @@ function ChatScreen({
           <TextInput
             value={input}
             onChangeText={setInput}
-            placeholder={recorderState.isRecording ? "Recording voice note..." : "Message"}
+            placeholder={recorderState.isRecording ? copy.recordingPlaceholder : copy.messagePlaceholder}
             placeholderTextColor="#7a837a"
             multiline
             style={{
@@ -576,13 +651,24 @@ function ChatScreen({
   );
 }
 
-function LanguageMenu({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+function LanguageMenu({
+  value,
+  suggestedLanguage,
+  copy,
+  onChange,
+}: {
+  value: string;
+  suggestedLanguage?: string;
+  copy: ReturnType<typeof uiCopy>;
+  onChange: (value: string) => void;
+}) {
   const languageOptions = [{ code: autoLanguageCode, label: "Auto" }, ...languages];
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ maxWidth: 104 }}>
       <View style={{ flexDirection: "row", gap: 6 }}>
         {languageOptions.map((item) => {
           const selected = item.code === value;
+          const suggested = item.code === suggestedLanguage;
           return (
             <Pressable
               key={item.code}
@@ -591,11 +677,11 @@ function LanguageMenu({ value, onChange }: { value: string; onChange: (value: st
                 paddingHorizontal: 9,
                 paddingVertical: 7,
                 borderRadius: 999,
-                backgroundColor: selected ? "#e7fff1" : "rgba(255,255,255,0.16)",
+                backgroundColor: selected ? "#e7fff1" : suggested ? "rgba(255,226,130,0.35)" : "rgba(255,255,255,0.16)",
               }}
             >
               <Text selectable={false} style={{ color: selected ? whatsAppGreen : "#fff", fontWeight: "800" }}>
-                {item.label}
+                {item.code === autoLanguageCode ? copy.autoLanguage : item.label}
               </Text>
             </Pressable>
           );
@@ -637,7 +723,15 @@ function AttachmentAction({ label, icon, onPress }: { label: string; icon: strin
   );
 }
 
-function MessageBubble({ message, maxWidth }: { message: ChatMessage; maxWidth: number }) {
+function MessageBubble({
+  message,
+  maxWidth,
+  copy,
+}: {
+  message: ChatMessage;
+  maxWidth: number;
+  copy: ReturnType<typeof uiCopy>;
+}) {
   const audioPlayer = useAudioPlayer(message.audioUri ? { uri: message.audioUri } : null);
   const hasAutoPlayed = useRef(false);
   const isSystem = message.kind === "system";
@@ -696,7 +790,7 @@ function MessageBubble({ message, maxWidth }: { message: ChatMessage; maxWidth: 
               📍
             </Text>
             <Text selectable style={{ color: whatsAppGreen, fontWeight: "900", marginTop: 4 }}>
-              Farm location
+              {copy.farmLocation}
             </Text>
           </View>
         ) : null}
@@ -720,7 +814,7 @@ function MessageBubble({ message, maxWidth }: { message: ChatMessage; maxWidth: 
             </Text>
             <View style={{ flex: 1, height: 3, borderRadius: 2, backgroundColor: "#8eb49b" }} />
             <Text selectable={false} style={{ color: "#536053", fontSize: 12, fontWeight: "800" }}>
-              Voice
+              {copy.voice}
             </Text>
           </Pressable>
         ) : null}
@@ -753,14 +847,14 @@ function MessageBubble({ message, maxWidth }: { message: ChatMessage; maxWidth: 
   );
 }
 
-function responseToMessage(response: ChatResponse): ChatMessage {
+function responseToMessage(response: ChatResponse, copy: ReturnType<typeof uiCopy>): ChatMessage {
   const audioUri =
     response.response_audio_base64 && response.response_audio_content_type
       ? `data:${response.response_audio_content_type};base64,${response.response_audio_base64}`
       : undefined;
   return {
     id: `${Date.now()}-assistant`,
-    text: response.transcript ? `${response.reply}\n\nHeard: ${response.transcript}` : response.reply,
+    text: response.transcript ? `${response.reply}\n\n${copy.heard}: ${response.transcript}` : response.reply,
     mine: false,
     kind: audioUri ? "audio" : "text",
     audioUri,
@@ -793,11 +887,6 @@ function audioMimeType(uri: string) {
   if (lower.endsWith(".ogg") || lower.endsWith(".oga")) return "audio/ogg";
   if (lower.endsWith(".m4a") || lower.endsWith(".mp4")) return "audio/mp4";
   return "audio/mpeg";
-}
-
-function voiceDurationLabel(durationMillis: number) {
-  const seconds = Math.max(1, Math.round(durationMillis / 1000));
-  return `Voice note ${seconds}s`;
 }
 
 function currentTime() {

@@ -68,7 +68,7 @@ class TableParser(HTMLParser):
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Fetch and normalize Kisan Alert public datasets.")
+    parser = argparse.ArgumentParser(description="Fetch and normalize Kisan AI public datasets.")
     sub = parser.add_subparsers(dest="command", required=True)
 
     data_gov = sub.add_parser("fetch-data-gov-imd-subdivision")
@@ -202,7 +202,7 @@ def fetch_maharain_html(url: str, year: int, *, verify_tls: bool = True) -> str:
     response = requests.post(
         url,
         data={"year": str(year)},
-        headers={"User-Agent": "KisanAlertHackathon/1.0"},
+        headers={"User-Agent": "KisanAIHackathon/1.0"},
         verify=verify_tls,
         timeout=60,
     )

@@ -132,7 +132,7 @@ def test_admin_dashboard_serves_provider_switch_ui() -> None:
     response = client.get("/admin")
 
     assert response.status_code == 200
-    assert "Kisan Alert Admin" in response.text
+    assert "Kisan AI Admin" in response.text
     assert "/api/v1/providers/config" in response.text
     assert "/health" in response.text
     assert "Demo Alert Simulation" in response.text
@@ -212,7 +212,7 @@ def test_hindi_chat_flow_stays_friendly_and_contextual() -> None:
     assert first_response.status_code == 200
     first_body = first_response.json()
     assert first_body["intent"] == "general_advisory"
-    assert "किसान अलर्ट" in first_body["reply"]
+    assert "किसान AI" in first_body["reply"]
     assert "WATER" not in first_body["reply"]
     assert "CROP" not in first_body["reply"]
     assert "PHOTO" not in first_body["reply"]
