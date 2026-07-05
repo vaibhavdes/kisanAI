@@ -182,13 +182,16 @@ class GeocodingService:
         components = result.get("address_components") or []
         geometry = result.get("geometry") or {}
         location = geometry.get("location") or {}
+        admin2 = self._component(components, "administrative_area_level_2")
+        admin3 = self._component(components, "administrative_area_level_3")
+        district = admin3 if admin2 and "division" in admin2.lower() else (admin2 or admin3)
         return LocationResolution(
             source=source,
             latitude=self._float(location.get("lat")),
             longitude=self._float(location.get("lng")),
-            village=self._component(components, "locality") or self._component(components, "sublocality") or self._component(components, "administrative_area_level_3"),
-            taluka=self._component(components, "administrative_area_level_3"),
-            district=self._component(components, "administrative_area_level_2"),
+            village=self._component(components, "locality") or self._component(components, "sublocality") or admin3,
+            taluka=admin3 if admin3 != district else None,
+            district=district,
             state=self._component(components, "administrative_area_level_1"),
             pincode=self._component(components, "postal_code"),
             formatted_address=result.get("formatted_address"),

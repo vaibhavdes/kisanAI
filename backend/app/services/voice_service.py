@@ -17,6 +17,7 @@ from app.models.schemas import (
 )
 from app.repositories.store import store
 from app.services.channel_intent import detect_farmer_intent
+from app.services.service_audit_log_service import ServiceAuditLogService
 from app.utils.language import phrase
 
 
@@ -72,25 +73,91 @@ class VoiceService:
         audio = self._load_audio(payload.audio_base64, payload.audio_uri)
         errors: list[str] = []
         for provider in self._provider_order(ProviderFeature.stt):
+            start = ServiceAuditLogService().start()
             try:
                 if provider == ProviderName.google_stt:
-                    return self._transcribe_with_google(payload, audio)
+                    result = self._transcribe_with_google(payload, audio)
+                    ServiceAuditLogService().record(
+                        farmer_id=payload.farmer_id,
+                        service="stt",
+                        operation="transcribe",
+                        provider=provider.value,
+                        success=True,
+                        duration_ms=ServiceAuditLogService().elapsed_ms(start),
+                        request_body={"language": payload.language, "contentType": payload.content_type, "bytes": len(audio)},
+                        response_body={"transcriptLength": len(result.transcript), "confidence": result.confidence},
+                    )
+                    return result
                 if provider == ProviderName.sarvam_stt:
-                    return self._transcribe_with_sarvam(payload, audio)
+                    result = self._transcribe_with_sarvam(payload, audio)
+                    ServiceAuditLogService().record(
+                        farmer_id=payload.farmer_id,
+                        service="stt",
+                        operation="transcribe",
+                        provider=provider.value,
+                        success=True,
+                        duration_ms=ServiceAuditLogService().elapsed_ms(start),
+                        request_body={"language": payload.language, "contentType": payload.content_type, "bytes": len(audio)},
+                        response_body={"transcriptLength": len(result.transcript), "confidence": result.confidence},
+                    )
+                    return result
             except Exception as exc:
                 errors.append(f"{provider.value}:{exc.__class__.__name__}:{exc}")
+                ServiceAuditLogService().record(
+                    farmer_id=payload.farmer_id,
+                    service="stt",
+                    operation="transcribe",
+                    provider=provider.value,
+                    success=False,
+                    duration_ms=ServiceAuditLogService().elapsed_ms(start),
+                    request_body={"language": payload.language, "contentType": payload.content_type, "bytes": len(audio)},
+                    error=str(exc),
+                )
         raise VoiceProviderUnavailable("; ".join(errors) or "No STT provider is configured.")
 
     def speak(self, payload: VoiceSpeakRequest) -> VoiceSpeakResponse:
         errors: list[str] = []
         for provider in self._provider_order(ProviderFeature.tts):
+            start = ServiceAuditLogService().start()
             try:
                 if provider == ProviderName.google_tts:
-                    return self._speak_with_google(payload)
+                    result = self._speak_with_google(payload)
+                    ServiceAuditLogService().record(
+                        farmer_id=payload.farmer_id,
+                        service="tts",
+                        operation="speak",
+                        provider=provider.value,
+                        success=True,
+                        duration_ms=ServiceAuditLogService().elapsed_ms(start),
+                        request_body={"language": payload.language, "chars": len(payload.text)},
+                        response_body={"contentType": result.content_type, "encoding": result.audio_encoding},
+                    )
+                    return result
                 if provider == ProviderName.sarvam_tts:
-                    return self._speak_with_sarvam(payload)
+                    result = self._speak_with_sarvam(payload)
+                    ServiceAuditLogService().record(
+                        farmer_id=payload.farmer_id,
+                        service="tts",
+                        operation="speak",
+                        provider=provider.value,
+                        success=True,
+                        duration_ms=ServiceAuditLogService().elapsed_ms(start),
+                        request_body={"language": payload.language, "chars": len(payload.text)},
+                        response_body={"contentType": result.content_type, "encoding": result.audio_encoding},
+                    )
+                    return result
             except Exception as exc:
                 errors.append(f"{provider.value}:{exc.__class__.__name__}:{exc}")
+                ServiceAuditLogService().record(
+                    farmer_id=payload.farmer_id,
+                    service="tts",
+                    operation="speak",
+                    provider=provider.value,
+                    success=False,
+                    duration_ms=ServiceAuditLogService().elapsed_ms(start),
+                    request_body={"language": payload.language, "chars": len(payload.text)},
+                    error=str(exc),
+                )
         raise VoiceProviderUnavailable("; ".join(errors) or "No TTS provider is configured.")
 
     def _detect_intent(self, transcript: str) -> str:

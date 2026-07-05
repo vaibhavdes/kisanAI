@@ -337,13 +337,13 @@ def test_whatsapp_context_reuses_saved_location_for_weather_and_crop(monkeypatch
     weather_response = client.post("/api/v1/chat/message", json={"from_phone": phone, "text": "Weather", "language": "hi-IN"})
     assert weather_response.status_code == 200
     assert weather_response.json()["intent"] == "weather_query"
-    assert "बारिश का अनुमान" in weather_response.json()["reply"]
+    assert "बारिश अच्छी दिख रही है" in weather_response.json()["reply"]
     assert weather_response.json()["data_sources"]["weather"] == "open_meteo"
 
     pincode_response = client.post("/api/v1/chat/message", json={"from_phone": phone, "text": "413713", "language": "hi-IN"})
     assert pincode_response.status_code == 200
     assert pincode_response.json()["intent"] == "weather_query"
-    assert "बारिश का अनुमान" in pincode_response.json()["reply"]
+    assert "बारिश अच्छी दिख रही है" in pincode_response.json()["reply"]
 
 
 def test_crop_recommend_query_is_not_treated_as_crop_detail() -> None:
@@ -355,6 +355,45 @@ def test_crop_recommend_query_is_not_treated_as_crop_detail() -> None:
     assert response.status_code == 200
     assert response.json()["intent"] == "crop_recommendation"
     assert "I noted this crop detail" not in response.json()["reply"]
+
+
+def test_language_can_change_mid_conversation_without_profile_setting() -> None:
+    phone = "+91 90000 45454"
+    first = client.post("/api/v1/chat/message", json={"from_phone": phone, "text": "Tell current weather", "language": "en-IN"})
+    assert first.status_code == 200
+    assert first.json()["detected_language"] == "en-IN"
+
+    second = client.post("/api/v1/chat/message", json={"from_phone": phone, "text": "Hindi mein batao"})
+    assert second.status_code == 200
+    assert second.json()["detected_language"] == "hi-IN"
+    assert "लोकेशन" in second.json()["reply"] or "पिनकोड" in second.json()["reply"] or "मौसम" in second.json()["reply"]
+
+
+def test_crop_planning_slot_flow_stores_active_crop() -> None:
+    phone = "+91 90000 56565"
+    planted = client.post("/api/v1/chat/message", json={"from_phone": phone, "text": "I have planted jowar", "language": "en-IN"})
+    assert planted.status_code == 200
+    body = planted.json()
+    assert body["intent"] == "crop_planning"
+    assert "planting date" in body["reply"]
+    farmer = store.get_farmer(body["farmer_id"])
+    assert farmer is not None
+    assert farmer.active_crop == "sorghum"
+    assert farmer.active_crop_status == "active"
+
+    followup = client.post("/api/v1/chat/message", json={"from_phone": phone, "text": "2 weeks ago variety M35-1", "language": "en-IN"})
+    assert followup.status_code == 200
+    assert followup.json()["intent"] == "crop_planning"
+    farmer = store.get_farmer(body["farmer_id"])
+    assert farmer is not None
+    assert farmer.active_crop_planted_at
+    assert farmer.active_crop_variety == "M35-1"
+
+
+def test_provider_audit_endpoint_lists_service_logs() -> None:
+    response = client.get("/api/v1/providers/audit?limit=10")
+    assert response.status_code == 200
+    assert "logs" in response.json()
 
 
 def test_dialogflow_stale_keyword_menu_is_ignored(monkeypatch) -> None:

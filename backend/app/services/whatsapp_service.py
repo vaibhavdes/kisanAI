@@ -27,13 +27,14 @@ from app.services.dialogflow_channel_service import DialogflowChannelService, Di
 from app.services.expert_service import ExpertService
 from app.services.geocoding_service import GeocodingProviderUnavailable, GeocodingService, LocationResolution
 from app.services.bigquery_public_data_service import BigQueryPublicDataService
+from app.services.gemini_service import AdvisoryProviderUnavailable, GeminiService
 from app.services.recommendation_engine import RecommendationEngine
 from app.services.translation_service import TranslationProviderUnavailable, TranslationService
 from app.services.vision_ocr_service import VisionOcrService, VisionProviderUnavailable
 from app.services.weather_context_service import WeatherContextService, WeatherProviderUnavailable
 from app.services.weather_service import WeatherService
 from app.services.voice_service import VoiceProviderUnavailable, VoiceService
-from app.utils.language import phrase
+from app.utils.language import infer_message_language, phrase
 
 
 class WhatsAppService:
@@ -46,20 +47,19 @@ class WhatsAppService:
     ) -> WhatsAppWebhookResponse:
         existing_farmer = store.get_farmer_by_phone(payload.from_phone)
         requested_language = self._requested_language(payload.language)
-        detected_language = self._detect_language(payload.text) if not requested_language else None
-        response_language = requested_language or (existing_farmer.language if existing_farmer else None) or detected_language or settings.default_language
+        inferred_language = infer_message_language(payload.text)
+        detected_language = self._detect_language(payload.text) if not requested_language and not inferred_language else None
+        response_language = requested_language or inferred_language or detected_language or (existing_farmer.language if existing_farmer else None) or settings.default_language
         identity = store.identify_farmer(
             FarmerIdentifyRequest(
                 phone=payload.from_phone,
                 channel=channel,
-                language=response_language if (existing_farmer is None or requested_language) else None,
+                language=response_language if existing_farmer is None else None,
                 latitude=payload.latitude,
                 longitude=payload.longitude,
             )
         )
         farmer = identity.farmer
-        if farmer.language != response_language:
-            farmer = store.save_farmer(farmer.model_copy(update={"language": response_language}))
 
         transcript = self._transcribe_voice(payload, response_language)
         text = transcript or payload.text
@@ -104,10 +104,11 @@ class WhatsAppService:
             return dialogflow_response
 
         self._log_farmer_message(farmer.id, text or self._message_summary(payload), response_language, intent, payload, channel)
-        response = self._build_response(payload, farmer.id, response_language, text, transcript, intent)
+        response = self._build_response(payload, farmer.id, response_language, text, transcript, intent, channel)
         response.farmer_id = farmer.id
         response.detected_language = response_language
         response.missing_fields = identity.missing_fields
+        self._naturalize_response(response, farmer.id, response_language, text or "", channel)
 
         self._attach_audio(farmer.id, response, response_language)
 
@@ -130,6 +131,7 @@ class WhatsAppService:
         text: str | None,
         transcript: str | None,
         intent: str,
+        channel: str,
     ) -> WhatsAppWebhookResponse:
         farmer = store.get_farmer(farmer_id)
         if not farmer:
@@ -137,6 +139,9 @@ class WhatsAppService:
 
         self._capture_profile_facts(farmer, text)
         farmer = store.get_farmer(farmer_id) or farmer
+
+        if intent == "crop_planning" or self._is_crop_planning_text(text):
+            return self._crop_planning_response(farmer, language, text, transcript)
 
         if intent == "location_update":
             response = self._handle_coordinate_location(payload, farmer, language, transcript)
@@ -523,10 +528,106 @@ class WhatsAppService:
             fallback.stored_context = self._stored_context(farmer)
             return fallback
 
+    def _crop_planning_response(
+        self,
+        farmer: FarmerResponse,
+        language: str,
+        text: str | None,
+        transcript: str | None,
+    ) -> WhatsAppWebhookResponse:
+        data = farmer.model_dump()
+        crop = self._extract_crop(text) or farmer.active_crop
+        if crop:
+            data["active_crop"] = crop
+            data["active_crop_status"] = "active" if self._is_planted_text(text) else "planned"
+        planted_at = self._extract_relative_or_iso_date(text)
+        if planted_at:
+            data["active_crop_planted_at"] = planted_at
+        variety = self._extract_variety(text)
+        if variety:
+            data["active_crop_variety"] = variety
+        farmer = store.save_farmer(FarmerResponse(**data))
+
+        missing: list[str] = []
+        if not farmer.active_crop_planted_at:
+            missing.append("planting date")
+        if not farmer.active_crop_variety:
+            missing.append("variety")
+        if missing:
+            reply = phrase(
+                "crop_plan_missing",
+                language,
+                crop=self._crop_label(farmer.active_crop or "crop", language),
+                missing=", ".join(missing),
+            )
+        else:
+            reply = phrase(
+                "crop_plan_saved",
+                language,
+                crop=self._crop_label(farmer.active_crop or "crop", language),
+                date=farmer.active_crop_planted_at,
+                variety=farmer.active_crop_variety,
+            )
+        return WhatsAppWebhookResponse(
+            intent="crop_planning",
+            reply=reply,
+            template_name="crop_planning",
+            transcript=transcript,
+            stored_context=self._stored_context(farmer),
+            data_sources={"farmerProfile": "stored_crop_plan"},
+        )
+
+    def _naturalize_response(
+        self,
+        response: WhatsAppWebhookResponse,
+        farmer_id: str,
+        language: str,
+        text: str,
+        channel: str,
+    ) -> None:
+        if not response.reply or response.intent in {"location_update", "voice_message"}:
+            return
+        farmer = store.get_farmer(farmer_id)
+        if not farmer:
+            return
+        try:
+            reply, meta = GeminiService().generate_farmer_reply(
+                farmer_id=farmer_id,
+                channel=channel,
+                language=language,
+                user_message=text,
+                intent=response.intent,
+                farmer_context=self._stored_context(farmer),
+                recent_messages=[
+                    {
+                        "role": message.role.value,
+                        "text": message.text,
+                        "intent": message.intent,
+                        "language": message.language,
+                    }
+                    for message in ConversationStore().recent(farmer_id, limit=8)
+                ],
+                data_context={
+                    "channel": channel,
+                    "template": response.template_name,
+                    "data_sources": response.data_sources,
+                    "warnings": response.service_warnings,
+                    "supports_photo": channel in {"whatsapp", "app"},
+                    "supports_voice_reply": channel in {"whatsapp", "app", "voice"},
+                },
+                draft_answer=response.reply,
+            )
+            response.reply = reply
+            response.data_sources.update({key: value for key, value in meta.items() if value})
+        except AdvisoryProviderUnavailable as exc:
+            response.service_warnings.append(f"AI natural-language generation unavailable: {exc}")
+
     def _intent_with_context(self, farmer_id: str, text: str | None, intent: str) -> str:
         if self._extract_pincode(text):
             previous_intent = self._last_active_intent(farmer_id)
             return previous_intent or intent
+        if self._is_crop_planning_text(text):
+            return "crop_planning"
         if intent in {
             "location_update",
             "voice_message",
@@ -544,6 +645,8 @@ class WhatsAppService:
             return "crop_recommendation"
         if previous_intent == "irrigation_advisory" and is_water_followup_text(text):
             return "irrigation_advisory"
+        if previous_intent == "crop_planning" and self._looks_like_crop_plan_followup(text):
+            return "crop_planning"
         return intent
 
     def _capture_profile_facts(self, farmer: FarmerResponse, text: str | None) -> None:
@@ -578,11 +681,55 @@ class WhatsAppService:
         if changed:
             store.save_farmer(FarmerResponse(**data))
 
+    def _is_crop_planning_text(self, text: str | None) -> bool:
+        normalized = (text or "").lower()
+        return any(
+            token in normalized
+            for token in [
+                "planted", "sown", "sowed", "i planted", "i have planted", "planning",
+                "lagaya", "boya", "perni", "लागवड", "पेरणी", "लगाया", "बोया",
+            ]
+        )
+
+    def _is_planted_text(self, text: str | None) -> bool:
+        normalized = (text or "").lower()
+        return any(token in normalized for token in ["planted", "sown", "sowed", "lagaya", "boya", "पेरणी", "लागवड", "लगाया", "बोया"])
+
+    def _looks_like_crop_plan_followup(self, text: str | None) -> bool:
+        normalized = (text or "").lower().strip()
+        if not normalized:
+            return False
+        return bool(self._extract_relative_or_iso_date(normalized) or self._extract_variety(normalized) or self._extract_crop(normalized))
+
+    def _extract_relative_or_iso_date(self, text: str | None) -> str | None:
+        normalized = (text or "").lower()
+        today = datetime.now(UTC).date()
+        if re.search(r"\b(today|aaj|आज)\b", normalized):
+            return today.isoformat()
+        if re.search(r"\b(yesterday|kal|काल)\b", normalized):
+            return (today.fromordinal(today.toordinal() - 1)).isoformat()
+        match = re.search(r"(\d{1,2})\s*(days?|दिन|दिवस)\s*(ago|पहले|आधी)?", normalized)
+        if match:
+            return (today.fromordinal(today.toordinal() - int(match.group(1)))).isoformat()
+        week_match = re.search(r"(\d{1,2})\s*(weeks?|हफ्ते|आठवडे)\s*(ago|पहले|आधी)?", normalized)
+        if week_match:
+            return (today.fromordinal(today.toordinal() - int(week_match.group(1)) * 7)).isoformat()
+        iso_match = re.search(r"\b(20\d{2}-\d{2}-\d{2})\b", normalized)
+        return iso_match.group(1) if iso_match else None
+
+    def _extract_variety(self, text: str | None) -> str | None:
+        if not text:
+            return None
+        match = re.search(r"(?:variety|var\.?|जात|वाण)\s*[:\-]?\s*([A-Za-z0-9 \-]{2,30})", text, flags=re.IGNORECASE)
+        if match:
+            return match.group(1).strip(" .,!?:;")
+        return None
+
     def _last_active_intent(self, farmer_id: str) -> str | None:
         for message in reversed(ConversationStore().recent(farmer_id, limit=8)):
             if (
                 message.role == ConversationRole.assistant
-                and message.intent in {"crop_recommendation", "irrigation_advisory", "crop_diagnosis", "weather_query"}
+                and message.intent in {"crop_recommendation", "irrigation_advisory", "crop_diagnosis", "weather_query", "crop_planning"}
             ):
                 return message.intent
         return None

@@ -253,6 +253,15 @@ ADMIN_HTML = """<!doctype html>
         <div class="cards" id="tickets"></div>
       </div>
     </section>
+    <section>
+      <div class="section-head">
+        <h2>Service Audit</h2>
+        <button class="secondary" id="refreshAuditBtn">Refresh Audit</button>
+      </div>
+      <div class="content">
+        <div class="cards" id="auditLogs"></div>
+      </div>
+    </section>
   </main>
   <script>
     const allowedProviders = {
@@ -464,6 +473,25 @@ ADMIN_HTML = """<!doctype html>
       `).join('');
     }
 
+    async function loadAuditLogs() {
+      const response = await fetch('/api/v1/providers/audit?limit=80');
+      const data = await response.json();
+      const logs = data.logs || [];
+      const container = document.getElementById('auditLogs');
+      if (!logs.length) {
+        container.innerHTML = '<div class="status">No service audit logs yet.</div>';
+        return;
+      }
+      container.innerHTML = logs.slice().reverse().map(log => `
+        <div class="card">
+          <div><strong>${log.service}</strong> · ${log.operation} · ${log.provider || '-'}</div>
+          <div class="mono">${log.success ? 'ok' : 'failed'} · status ${log.status_code || '-'} · ${log.duration_ms || 0} ms · ${log.channel || '-'}</div>
+          ${log.error ? `<div style="color: var(--bad);">${log.error}</div>` : ''}
+          <pre>${JSON.stringify({ request: log.request_body, response: log.response_body }, null, 2)}</pre>
+        </div>
+      `).join('');
+    }
+
     async function updateTicket(card) {
       const ticketId = card.dataset.ticket;
       const payload = {
@@ -523,13 +551,14 @@ ADMIN_HTML = """<!doctype html>
     }
 
     async function refreshAll() {
-      await Promise.all([loadHealth(), loadRoutes(), loadFarmers(), loadTickets()]);
+      await Promise.all([loadHealth(), loadRoutes(), loadFarmers(), loadTickets(), loadAuditLogs()]);
     }
 
     document.getElementById('saveBtn').addEventListener('click', saveRoutes);
     document.getElementById('refreshBtn').addEventListener('click', refreshAll);
     document.getElementById('refreshTicketsBtn').addEventListener('click', () => loadTickets().catch(error => showBanner(error.message, true)));
     document.getElementById('refreshFarmersBtn').addEventListener('click', () => loadFarmers().catch(error => showBanner(error.message, true)));
+    document.getElementById('refreshAuditBtn').addEventListener('click', () => loadAuditLogs().catch(error => showBanner(error.message, true)));
     document.getElementById('seedFarmerBtn').addEventListener('click', () => createDemoFarmer().catch(error => showBanner(error.message, true)));
     document.getElementById('scenarioSelect').addEventListener('change', applyScenario);
     document.getElementById('runAlertBtn').addEventListener('click', () => runAlertSimulation().catch(error => showBanner(error.message, true)));

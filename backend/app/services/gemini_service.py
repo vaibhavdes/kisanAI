@@ -12,6 +12,7 @@ from app.models.schemas import (
     RiskLevel,
 )
 from app.repositories.store import store
+from app.services.service_audit_log_service import ServiceAuditLogService
 
 
 class AdvisoryProviderUnavailable(RuntimeError):
@@ -43,6 +44,72 @@ class GeminiService:
             return self._fallback_diagnosis(payload)
 
         return self._fallback_diagnosis(payload)
+
+    def generate_farmer_reply(
+        self,
+        *,
+        farmer_id: str | None,
+        channel: str | None,
+        language: str,
+        user_message: str,
+        intent: str,
+        farmer_context: dict,
+        recent_messages: list[dict],
+        data_context: dict,
+        draft_answer: str,
+    ) -> tuple[str, dict[str, str | None]]:
+        errors: list[str] = []
+        for provider in self._provider_order():
+            start = ServiceAuditLogService().start()
+            try:
+                if provider == ProviderName.vertex_ai:
+                    reply = self._generate_farmer_reply_with_vertex(
+                        language=language,
+                        user_message=user_message,
+                        intent=intent,
+                        farmer_context=farmer_context,
+                        recent_messages=recent_messages,
+                        data_context=data_context,
+                        draft_answer=draft_answer,
+                    )
+                elif provider == ProviderName.gemini:
+                    reply = self._generate_farmer_reply_with_gemini(
+                        language=language,
+                        user_message=user_message,
+                        intent=intent,
+                        farmer_context=farmer_context,
+                        recent_messages=recent_messages,
+                        data_context=data_context,
+                        draft_answer=draft_answer,
+                    )
+                else:
+                    continue
+                ServiceAuditLogService().record(
+                    farmer_id=farmer_id,
+                    channel=channel,
+                    service="llm_advisory",
+                    operation="generate_farmer_reply",
+                    provider=provider.value,
+                    success=True,
+                    duration_ms=ServiceAuditLogService().elapsed_ms(start),
+                    request_body={"intent": intent, "language": language, "message": user_message},
+                    response_body={"reply": reply},
+                )
+                return reply, {"aiSource": provider.value, "aiModel": self._model_for_provider(provider)}
+            except Exception as exc:
+                errors.append(f"{provider.value}:{exc.__class__.__name__}:{exc}")
+                ServiceAuditLogService().record(
+                    farmer_id=farmer_id,
+                    channel=channel,
+                    service="llm_advisory",
+                    operation="generate_farmer_reply",
+                    provider=provider.value,
+                    success=False,
+                    duration_ms=ServiceAuditLogService().elapsed_ms(start),
+                    request_body={"intent": intent, "language": language, "message": user_message},
+                    error=str(exc),
+                )
+        raise AdvisoryProviderUnavailable("; ".join(errors) or "No LLM advisory provider is configured.")
 
     def _generate_advisory_with_vertex(self, payload: AdvisoryTestRequest) -> AdvisoryTestResponse:
         from google import genai
@@ -114,6 +181,74 @@ Keep advisory farmer-friendly, short, and actionable.
             risk_level=self._risk_from_text(str(data.get("risk_level") or "medium")),
             recommended_actions=[str(item) for item in actions if str(item).strip()][:5],
         )
+
+    def _generate_farmer_reply_with_vertex(self, **kwargs) -> str:
+        from google import genai
+
+        if not settings.google_cloud_project:
+            raise AdvisoryProviderUnavailable("GOOGLE_CLOUD_PROJECT is required for Vertex AI.")
+        client = genai.Client(
+            vertexai=True,
+            project=settings.google_cloud_project,
+            location=settings.google_cloud_location,
+        )
+        return self._generate_farmer_reply_with_client(client, settings.vertex_ai_model, **kwargs)
+
+    def _generate_farmer_reply_with_gemini(self, **kwargs) -> str:
+        from google import genai
+
+        if not settings.gemini_api_key:
+            raise AdvisoryProviderUnavailable("GEMINI_API_KEY is required for Gemini API fallback.")
+        client = genai.Client(api_key=settings.gemini_api_key)
+        return self._generate_farmer_reply_with_client(client, settings.gemini_model, **kwargs)
+
+    def _generate_farmer_reply_with_client(
+        self,
+        client,
+        model: str,
+        *,
+        language: str,
+        user_message: str,
+        intent: str,
+        farmer_context: dict,
+        recent_messages: list[dict],
+        data_context: dict,
+        draft_answer: str,
+    ) -> str:
+        prompt = f"""
+You are Kisan AI, a natural agricultural assistant for small Indian farmers.
+
+Write the final farmer-facing reply only. No JSON, no markdown, no English labels unless the farmer wrote in English.
+
+Rules:
+- Reply in the same language/style as the farmer's latest message. If it is Roman Hindi/Hinglish, answer in simple Hindi written naturally. If it is Marathi, answer in Marathi.
+- Use simple everyday farmer language. Avoid scientific report style.
+- Do not include technical source labels like open_meteo, BigQuery, NDVI unless the farmer asks for source. Those are already logged separately.
+- If information is missing, ask only one or two necessary questions and keep already-known details.
+- If a crop is planted/planned, continue slot filling naturally: crop, sowing date, variety, area if needed.
+- Respect channel: {data_context.get("channel")}. Do not ask for app upload when the farmer is on WhatsApp or SMS.
+- Keep under 700 characters.
+
+Latest farmer message: {user_message}
+Intent: {intent}
+Language code: {language}
+Farmer context: {json.dumps(farmer_context, ensure_ascii=False)}
+Recent messages: {json.dumps(recent_messages[-8:], ensure_ascii=False)}
+Fetched data/context: {json.dumps(data_context, ensure_ascii=False)}
+
+Draft facts to convert into farmer-friendly answer:
+{draft_answer}
+"""
+        response = client.models.generate_content(model=model, contents=prompt)
+        text = (response.text or "").strip()
+        if not text:
+            raise AdvisoryProviderUnavailable("LLM returned an empty farmer reply.")
+        return text.removeprefix("```").removesuffix("```").strip()
+
+    def _model_for_provider(self, provider: ProviderName) -> str:
+        if provider == ProviderName.vertex_ai:
+            return settings.vertex_ai_model
+        return settings.gemini_model
 
     def _parse_json_response(self, text: str) -> dict:
         cleaned = text.removeprefix("```json").removeprefix("```").removesuffix("```").strip()

@@ -118,6 +118,9 @@ class FarmerCreate(BaseModel):
     state: str
     pincode: str | None = None
     active_crop: str | None = None
+    active_crop_planted_at: str | None = None
+    active_crop_variety: str | None = None
+    active_crop_status: str | None = None
     water_availability: WaterAvailability | None = None
     farm: FarmProfile
 
@@ -747,3 +750,23 @@ class ConversationLogRequest(BaseModel):
 class ConversationLogResponse(BaseModel):
     saved: bool
     message: ConversationMessage
+
+
+class ServiceAuditLog(BaseModel):
+    id: str = Field(default_factory=lambda: f"audit_{uuid4().hex[:10]}")
+    farmer_id: str | None = None
+    channel: str | None = None
+    service: str
+    operation: str
+    provider: str | None = None
+    status_code: int | None = None
+    success: bool
+    duration_ms: int | None = None
+    request_body: dict[str, Any] | None = None
+    response_body: dict[str, Any] | None = None
+    error: str | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class ServiceAuditLogResponse(BaseModel):
+    logs: list[ServiceAuditLog]

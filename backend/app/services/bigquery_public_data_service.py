@@ -4,6 +4,7 @@ from app.core.config import settings
 from app.models.schemas import DataSignal, GovernmentDataContextRequest, GovernmentDataContextResponse
 from app.services.government_data_service import GovernmentDataService
 from app.services.imd_region_mapping import maharashtra_imd_subdivision_for_district
+from app.services.service_audit_log_service import ServiceAuditLogService
 
 
 class BigQueryPublicDataService:
@@ -17,13 +18,26 @@ class BigQueryPublicDataService:
         self.client = client
 
     def build_context(self, payload: GovernmentDataContextRequest) -> GovernmentDataContextResponse:
-        rainfall = self._rainfall_normal(payload)
-        groundwater = self._groundwater(payload)
-        soil = self._soil_health(payload)
-        crop_history = self._crop_history(payload)
-        agromet = self._agromet(payload)
-        dryspell = self._dryspell(payload)
-        heavy_rainfall = self._heavy_rainfall(payload)
+        start = ServiceAuditLogService().start()
+        try:
+            rainfall = self._rainfall_normal(payload)
+            groundwater = self._groundwater(payload)
+            soil = self._soil_health(payload)
+            crop_history = self._crop_history(payload)
+            agromet = self._agromet(payload)
+            dryspell = self._dryspell(payload)
+            heavy_rainfall = self._heavy_rainfall(payload)
+        except Exception as exc:
+            ServiceAuditLogService().record(
+                service="bigquery_public_data",
+                operation="build_context",
+                provider="bigquery",
+                success=False,
+                duration_ms=ServiceAuditLogService().elapsed_ms(start),
+                request_body=payload.model_dump(),
+                error=str(exc),
+            )
+            raise
         signals = {
             "rainfall_normal": rainfall,
             "groundwater": groundwater,
@@ -34,7 +48,7 @@ class BigQueryPublicDataService:
         if payload.state.lower() == "maharashtra":
             signals["dryspell_history"] = dryspell
             signals["heavy_rainfall_history"] = heavy_rainfall
-        return GovernmentDataContextResponse(
+        result = GovernmentDataContextResponse(
             state=payload.state,
             district=payload.district,
             crop=payload.crop,
@@ -48,6 +62,21 @@ class BigQueryPublicDataService:
             recommended_datasets=GovernmentDataService().list_sources(),
             missing_sources=[name for name, signal in signals.items() if not signal.available],
         )
+        ServiceAuditLogService().record(
+            service="bigquery_public_data",
+            operation="build_context",
+            provider="bigquery",
+            success=True,
+            duration_ms=ServiceAuditLogService().elapsed_ms(start),
+            request_body=payload.model_dump(),
+            response_body={
+                "missingSources": result.missing_sources,
+                "rainfallAvailable": result.rainfall_normal.available,
+                "soilAvailable": result.soil_health.available,
+                "groundwaterAvailable": result.groundwater.available,
+            },
+        )
+        return result
 
     def _rainfall_normal(self, payload: GovernmentDataContextRequest) -> DataSignal:
         if payload.month is None:

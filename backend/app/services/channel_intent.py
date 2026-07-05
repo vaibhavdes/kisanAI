@@ -29,6 +29,8 @@ def detect_farmer_intent(
     if _has_any(normalized, WEATHER_TERMS):
         return "weather_query"
 
+    if _has_any(normalized, CROP_PLANNING_TERMS):
+        return "crop_planning"
     if _has_any(normalized, DIAGNOSIS_TERMS):
         return "crop_diagnosis"
     if _has_any(normalized, IRRIGATION_TERMS):
@@ -208,6 +210,21 @@ CROP_RECOMMENDATION_TERMS = [
     "జొన్న",
     "ಬೆಳೆ",
     "ಜೋಳ",
+]
+
+CROP_PLANNING_TERMS = [
+    "i planted",
+    "i have planted",
+    "planted",
+    "sown",
+    "sowed",
+    "planning",
+    "lagaya",
+    "boya",
+    "पेरणी",
+    "लागवड",
+    "लगाया",
+    "बोया",
 ]
 
 CROP_FOLLOWUP_TERMS = [

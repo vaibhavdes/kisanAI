@@ -142,9 +142,9 @@ PHRASES = {
         "gu-IN": "ચોક્કસ હવામાન માટે ખેતરની લોકેશન મોકલો અથવા ગામ/પિનકોડ એક વાર લખો.",
     },
     "weather_answer": {
-        "en-IN": "{location}: now about {temp} C, humidity {humidity}%. Expected rain: {rain3} mm in 3 days and {rain7} mm in 7 days. Data used: {source}.",
-        "hi-IN": "{location}: अभी लगभग {temp} C तापमान और {humidity}% नमी है। बारिश का अनुमान: 3 दिन में {rain3} mm और 7 दिन में {rain7} mm। उपयोग किया गया डेटा: {source}.",
-        "mr-IN": "{location}: सध्या सुमारे {temp} C तापमान आणि {humidity}% आर्द्रता आहे. पावसाचा अंदाज: 3 दिवसांत {rain3} mm आणि 7 दिवसांत {rain7} mm. वापरलेला डेटा: {source}.",
+        "en-IN": "{location}: today is cool at about {temp} C and humidity is {humidity}%. Rain chance looks high: about {rain3} mm in 3 days and {rain7} mm in 7 days. Keep drainage open and avoid spraying if clouds/rain continue.",
+        "hi-IN": "{location}: आज तापमान करीब {temp} C है और नमी {humidity}% है। बारिश अच्छी दिख रही है: 3 दिन में करीब {rain3} mm और 7 दिन में {rain7} mm। खेत में पानी निकास खुला रखें और बारिश में छिड़काव न करें।",
+        "mr-IN": "{location}: आज तापमान सुमारे {temp} C आहे आणि आर्द्रता {humidity}% आहे. पाऊस जास्त दिसतोय: 3 दिवसांत सुमारे {rain3} mm आणि 7 दिवसांत {rain7} mm. पाण्याचा निचरा खुला ठेवा आणि पावसात फवारणी टाळा.",
         "te-IN": "{location}: ప్రస్తుతం సుమారు {temp} C, తేమ {humidity}%. వర్షం అంచనా: 3 రోజుల్లో {rain3} mm, 7 రోజుల్లో {rain7} mm. వాడిన డేటా: {source}.",
         "ta-IN": "{location}: இப்போது சுமார் {temp} C, ஈரப்பதம் {humidity}%. மழை கணிப்பு: 3 நாளில் {rain3} mm, 7 நாளில் {rain7} mm. பயன்படுத்திய தரவு: {source}.",
         "kn-IN": "{location}: ಈಗ ಸುಮಾರು {temp} C, ತೇವಾಂಶ {humidity}%. ಮಳೆ ಅಂದಾಜು: 3 ದಿನದಲ್ಲಿ {rain3} mm, 7 ದಿನದಲ್ಲಿ {rain7} mm. ಬಳಸಿದ ಡೇಟಾ: {source}.",
@@ -166,9 +166,9 @@ PHRASES = {
         "mr-IN": "पीक सल्ल्यासाठी किमान गाव/पिनकोड किंवा शेताची लोकेशन हवी. एकदा पाठवा, मग माती, पाऊस आणि सॅटेलाइट/सरकारी डेटावरून सल्ला देईन.",
     },
     "crop_recommendation_answer": {
-        "en-IN": "{location}: based on available soil, rainfall, groundwater and satellite/public context, suitable options are {crops}. Main reason: {reason} Data used: {source}.",
-        "hi-IN": "{location}: उपलब्ध मिट्टी, बारिश, भूजल और सैटेलाइट/सरकारी जानकारी के आधार पर अच्छे विकल्प हैं: {crops}. मुख्य कारण: {reason} उपयोग किया गया डेटा: {source}.",
-        "mr-IN": "{location}: उपलब्ध माती, पाऊस, भूजल आणि सॅटेलाइट/सरकारी माहितीनुसार चांगले पर्याय आहेत: {crops}. मुख्य कारण: {reason} वापरलेला डेटा: {source}.",
+        "en-IN": "{location}: suitable crop options are {crops}. Main reason: {reason}",
+        "hi-IN": "{location}: इस इलाके के लिए अच्छे विकल्प हैं: {crops}. मुख्य कारण: {reason}",
+        "mr-IN": "{location}: या भागासाठी चांगले पर्याय आहेत: {crops}. मुख्य कारण: {reason}",
     },
     "crop_soil_refine": {
         "en-IN": "If you share soil type or soil-card photo later, I will refine this recommendation.",
@@ -191,9 +191,19 @@ PHRASES = {
         "mr-IN": "पाणी सल्ल्यासाठी शेताची लोकेशन किंवा पिनकोड एकदा हवा, कारण पाऊस आणि माती ओलावा अंदाज लोकेशनवर अवलंबून असतो.",
     },
     "irrigation_answer": {
-        "en-IN": "{location}: irrigation risk is {risk}. Dry days in forecast: {dry_days}. Suggested irrigation: {irrigation} mm. {advisory} Data used: {source}.",
-        "hi-IN": "{location}: सिंचाई जोखिम {risk} है। अनुमान में सूखे दिन: {dry_days}. सुझाई गई सिंचाई: {irrigation} mm. {advisory} उपयोग किया गया डेटा: {source}.",
-        "mr-IN": "{location}: पाणी देण्याचा धोका {risk} आहे. अंदाजातील कोरडे दिवस: {dry_days}. सुचवलेले पाणी: {irrigation} mm. {advisory} वापरलेला डेटा: {source}.",
+        "en-IN": "{location}: irrigation risk is {risk}. Dry days expected: {dry_days}. Suggested irrigation: {irrigation} mm. {advisory}",
+        "hi-IN": "{location}: सिंचाई का जोखिम {risk} है। अगले दिनों में सूखे दिन: {dry_days}. जरूरत हो तो लगभग {irrigation} mm पानी दें। {advisory}",
+        "mr-IN": "{location}: पाणी देण्याचा धोका {risk} आहे. पुढील दिवसांत कोरडे दिवस: {dry_days}. गरज असल्यास सुमारे {irrigation} mm पाणी द्या. {advisory}",
+    },
+    "crop_plan_missing": {
+        "en-IN": "I noted {crop}. To give time-to-time advisory, please tell {missing}. Example: planted 2 weeks ago, variety M35-1.",
+        "hi-IN": "मैंने {crop} नोट कर लिया। समय-समय पर सही सलाह के लिए {missing} बताएं। जैसे: 2 हफ्ते पहले लगाया, variety M35-1.",
+        "mr-IN": "{crop} नोंदवले. वेळोवेळी योग्य सल्ल्यासाठी {missing} सांगा. उदा. 2 आठवडे आधी पेरणी केली, वाण M35-1.",
+    },
+    "crop_plan_saved": {
+        "en-IN": "{crop} crop plan is saved. Planting date: {date}, variety: {variety}. I will use this for stage-wise weather, irrigation and crop-health alerts.",
+        "hi-IN": "{crop} की crop planning सेव हो गई। लगाने की तारीख: {date}, variety: {variety}. अब इसी से stage-wise मौसम, सिंचाई और बीमारी अलर्ट दूंगा।",
+        "mr-IN": "{crop} चे crop planning सेव झाले. पेरणी तारीख: {date}, वाण: {variety}. आता यावरून stage-wise हवामान, पाणी आणि रोग अलर्ट देईन.",
     },
     "diagnosis_result": {
         "en-IN": "{issue}. {action} Expert follow-up Ticket: {ticket}.",
@@ -258,3 +268,36 @@ def phrase(key: str, locale: str, **kwargs: object) -> str:
     localized = PHRASES.get(key, {})
     template = localized.get(locale) or localized.get("en-IN") or key
     return template.format(**kwargs)
+
+
+def infer_message_language(text: str | None, fallback: str | None = None) -> str | None:
+    normalized = (text or "").strip().lower()
+    if not normalized:
+        return fallback
+
+    if any("\u0900" <= char <= "\u097f" for char in normalized):
+        if any(token in normalized for token in ["आहे", "माझ", "सांगा", "हवामान", "पीक", "पाणी"]):
+            return "mr-IN"
+        return "hi-IN"
+    if any("\u0a80" <= char <= "\u0aff" for char in normalized):
+        return "gu-IN"
+    if any("\u0b80" <= char <= "\u0bff" for char in normalized):
+        return "ta-IN"
+    if any("\u0c00" <= char <= "\u0c7f" for char in normalized):
+        return "te-IN"
+    if any("\u0c80" <= char <= "\u0cff" for char in normalized):
+        return "kn-IN"
+
+    hindi_roman = [
+        "aaj", "kal", "mausam", "hindi", "mein", "batao", "pani", "barish", "fasal",
+        "kheti", "lagani", "sichai", "kaise", "kya", "kab", "kisan",
+    ]
+    marathi_roman = [
+        "marathi", "madhe", "sanga", "havaman", "pavus", "paani", "pik", "jwari",
+        "bajri", "lagvad", "shet", "maza", "majha",
+    ]
+    if any(token in normalized for token in marathi_roman):
+        return "mr-IN"
+    if any(token in normalized for token in hindi_roman):
+        return "hi-IN"
+    return fallback

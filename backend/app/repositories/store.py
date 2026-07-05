@@ -16,6 +16,7 @@ from app.models.schemas import (
     ProviderFeature,
     ProviderName,
     ProviderRoute,
+    ServiceAuditLog,
 )
 from app.utils.phone import normalize_phone
 
@@ -59,6 +60,10 @@ class AppStore(Protocol):
 
     def save_provider_route(self, route: ProviderRoute) -> ProviderRoute: ...
 
+    def save_service_audit_log(self, log: ServiceAuditLog) -> ServiceAuditLog: ...
+
+    def list_service_audit_logs(self, limit: int = 100, farmer_id: str | None = None) -> list[ServiceAuditLog]: ...
+
     def reset(self) -> None: ...
 
 
@@ -69,6 +74,7 @@ class LocalStore:
         self.tickets: list[ExpertTicket] = []
         self.conversations: list[ConversationMessage] = []
         self.delivery_receipts: list[ChannelDeliveryReceipt] = []
+        self.service_audit_logs: list[ServiceAuditLog] = []
         self.alert_run_records: dict[str, AlertRunRecord] = {}
         self.provider_routes: dict[ProviderFeature, ProviderRoute] = default_provider_routes()
         self.provider_routes_updated_at = datetime.now(UTC)
@@ -147,6 +153,14 @@ class LocalStore:
     def list_delivery_receipts(self, limit: int = 100) -> list[ChannelDeliveryReceipt]:
         return self.delivery_receipts[-limit:]
 
+    def save_service_audit_log(self, log: ServiceAuditLog) -> ServiceAuditLog:
+        self.service_audit_logs.append(log)
+        return log
+
+    def list_service_audit_logs(self, limit: int = 100, farmer_id: str | None = None) -> list[ServiceAuditLog]:
+        logs = [log for log in self.service_audit_logs if not farmer_id or log.farmer_id == farmer_id]
+        return logs[-limit:]
+
     def save_alert_run_record(self, record: AlertRunRecord) -> AlertRunRecord:
         self.alert_run_records[record.key] = record
         return record
@@ -171,6 +185,7 @@ class LocalStore:
         self.tickets.clear()
         self.conversations.clear()
         self.delivery_receipts.clear()
+        self.service_audit_logs.clear()
         self.alert_run_records.clear()
         self.provider_routes = default_provider_routes()
         self.provider_routes_updated_at = datetime.now(UTC)
@@ -332,6 +347,21 @@ class FirestoreStore:
             .stream()
         )
         return list(reversed([ChannelDeliveryReceipt(**doc.to_dict()) for doc in docs]))
+
+    def save_service_audit_log(self, log: ServiceAuditLog) -> ServiceAuditLog:
+        self.client.collection("service_audit_logs").document(log.id).set(log.model_dump(mode="json"))
+        return log
+
+    def list_service_audit_logs(self, limit: int = 100, farmer_id: str | None = None) -> list[ServiceAuditLog]:
+        query = self.client.collection("service_audit_logs").order_by("created_at", direction="DESCENDING").limit(limit)
+        if farmer_id:
+            query = (
+                self.client.collection("service_audit_logs")
+                .where("farmer_id", "==", farmer_id)
+                .order_by("created_at", direction="DESCENDING")
+                .limit(limit)
+            )
+        return list(reversed([ServiceAuditLog(**doc.to_dict()) for doc in query.stream()]))
 
     def save_alert_run_record(self, record: AlertRunRecord) -> AlertRunRecord:
         self.client.collection("alert_run_records").document(record.key).set(record.model_dump(mode="json"))

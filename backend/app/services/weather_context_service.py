@@ -12,6 +12,7 @@ from app.models.schemas import (
     WeatherProviderStatus,
 )
 from app.repositories.store import store
+from app.services.service_audit_log_service import ServiceAuditLogService
 
 
 class WeatherProviderUnavailable(RuntimeError):
@@ -28,8 +29,22 @@ class WeatherContextService:
         statuses: list[WeatherProviderStatus] = []
         last_error: str | None = None
         for index, provider in enumerate(provider_order):
+            start = ServiceAuditLogService().start()
             try:
                 context = self._fetch(provider, payload)
+                ServiceAuditLogService().record(
+                    service="weather",
+                    operation="get_context",
+                    provider=provider.value,
+                    success=True,
+                    duration_ms=ServiceAuditLogService().elapsed_ms(start),
+                    request_body={"latitude": payload.latitude, "longitude": payload.longitude, "days": payload.days},
+                    response_body={
+                        "currentTemperatureC": context.current_temperature_c,
+                        "dailyCount": len(context.daily),
+                        "source": context.source.value,
+                    },
+                )
                 statuses.append(WeatherProviderStatus(provider=provider, attempted=True, success=True))
                 return context.model_copy(
                     update={
@@ -39,6 +54,15 @@ class WeatherContextService:
                 )
             except Exception as exc:
                 last_error = str(exc)
+                ServiceAuditLogService().record(
+                    service="weather",
+                    operation="get_context",
+                    provider=provider.value,
+                    success=False,
+                    duration_ms=ServiceAuditLogService().elapsed_ms(start),
+                    request_body={"latitude": payload.latitude, "longitude": payload.longitude, "days": payload.days},
+                    error=last_error,
+                )
                 statuses.append(
                     WeatherProviderStatus(
                         provider=provider,
