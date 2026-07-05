@@ -15,6 +15,10 @@ GEMINI_MODEL="${GEMINI_MODEL:-gemini-2.5-flash}"
 VERTEX_AI_MODEL="${VERTEX_AI_MODEL:-gemini-2.5-flash}"
 OPEN_METEO_BASE_URL="${OPEN_METEO_BASE_URL:-https://api.open-meteo.com/v1/forecast}"
 RYTHU_SEVA_DEFAULT_CENTER="${RYTHU_SEVA_DEFAULT_CENTER:-RSK Demo Center}"
+SOURCE_DIR="${SOURCE_DIR:-backend}"
+if [[ ! -d "${SOURCE_DIR}" ]]; then
+  SOURCE_DIR="."
+fi
 
 if [[ -z "${ENV_FILE}" ]]; then
   if [[ -f ".env" ]]; then
@@ -160,7 +164,7 @@ if [[ "${#SECRET_MAPPINGS[@]}" -gt 0 ]]; then
 fi
 
 gcloud run deploy "${SERVICE_NAME}" \
-  --source . \
+  --source "${SOURCE_DIR}" \
   --region "${REGION}" \
   --service-account "${SERVICE_ACCOUNT_EMAIL}" \
   --allow-unauthenticated \
