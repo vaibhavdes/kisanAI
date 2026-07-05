@@ -255,7 +255,7 @@ ADMIN_HTML = """<!doctype html>
       satellite: ["earth_engine"],
       geocoding_maps: ["google_maps", "osm_nominatim"],
       whatsapp: ["authkey", "twilio"],
-      sms_voice: ["authkey", "twilio"]
+      sms_voice: ["authkey"]
     };
     const routeState = new Map();
 
@@ -296,7 +296,7 @@ ADMIN_HTML = """<!doctype html>
       const tbody = document.getElementById('routes');
       tbody.innerHTML = data.routes.map(route => {
         routeState.set(route.feature, route);
-        const fallbackDisabled = route.feature === 'satellite' ? 'disabled' : '';
+        const fallbackDisabled = ['satellite', 'sms_voice'].includes(route.feature) ? 'disabled' : '';
         return `
           <tr data-feature="${route.feature}">
             <td data-label="Feature"><strong>${route.feature}</strong></td>

@@ -479,6 +479,8 @@ Useful endpoints:
 | `POST /api/v1/twilio/whatsapp` | Twilio WhatsApp webhook. |
 | `POST /api/v1/twilio/sms` | Twilio SMS webhook. |
 | `POST /api/v1/twilio/voice` | Twilio voice webhook. |
+| `POST /api/v1/twilio/status` | Twilio SMS/WhatsApp delivery status callback. |
+| `GET /api/v1/twilio/media/{media_id}` | Temporary local media endpoint for Twilio reply audio fallback. |
 
 ## Deployment
 
@@ -513,6 +515,7 @@ Configure after deployment:
 
 - Dialogflow CX fulfillment: `https://SERVICE_URL/api/v1/dialogflow/webhook`
 - Twilio WhatsApp: `https://SERVICE_URL/api/v1/twilio/whatsapp`
+- Twilio status callback: `https://SERVICE_URL/api/v1/twilio/status`
 - Twilio SMS: `https://SERVICE_URL/api/v1/twilio/sms`
 - Twilio Voice: `https://SERVICE_URL/api/v1/twilio/voice`
 - Authkey/generic WhatsApp: `https://SERVICE_URL/api/v1/whatsapp/webhook`
@@ -529,6 +532,29 @@ Admin demo after deployment:
 6. The panel calls `/api/v1/alerts/run-daily`; urgent dry-spell risk produces WhatsApp/SMS/voice-call channels based on the alert priority policy. If `AUTHKEY_SEND_ENABLED=false`, results show dry-run/skipped status without sending.
 7. Crop photo diagnosis creates expert tickets; use the Expert Tickets panel to assign/respond/update status.
 
+Twilio WhatsApp setup:
+
+- Inbound webhook: set the Twilio WhatsApp sender webhook to `/api/v1/twilio/whatsapp`.
+- Status callback: use `/api/v1/twilio/status` for delivery, failed, read and related Twilio message events.
+- Public URL: set `TWILIO_PUBLIC_BASE_URL` to the ngrok/custom-domain/Cloud Run URL that Twilio calls. Cloud Run deploy sets this to the service URL when no custom callback URL is provided.
+- Webhook security: set `TWILIO_VALIDATE_WEBHOOKS=true` after `TWILIO_AUTH_TOKEN` is configured.
+- Outbound alerts stay dry-run unless `TWILIO_ENABLE_LIVE_SEND=true`.
+- For proactive messages outside the WhatsApp customer-service window, set `TWILIO_CONTENT_SID` and optional JSON `TWILIO_CONTENT_VARIABLES`. Template variables can include `{message}`, `{media_url}`, and `{media_file_name}`.
+- Voice replies over WhatsApp need a public media URL. Configure `TWILIO_MEDIA_BUCKET` or `STORAGE_BUCKET`; optionally set `TWILIO_MEDIA_PUBLIC_BASE_URL` if the bucket path is public. Without cloud media, local/ngrok uses `/api/v1/twilio/media/{media_id}` as a short-lived fallback; production avoids the in-memory fallback when bucket publishing fails.
+- Live Twilio REST sends may return `queued`/`accepted` before final delivery. The backend treats those as accepted, not delivered; final delivery/read/failed states come through `/api/v1/twilio/status`.
+
+Twilio credential/env values:
+
+- `TWILIO_ACCOUNT_SID`
+- `TWILIO_AUTH_TOKEN`
+- `TWILIO_WHATSAPP_FROM`
+- Optional `TWILIO_MESSAGING_SERVICE_SID`
+- Optional `TWILIO_CONTENT_SID`
+- Optional `TWILIO_CONTENT_VARIABLES`
+- Optional `TWILIO_STATUS_CALLBACK_URL`
+- Optional `TWILIO_MEDIA_BUCKET`
+- Optional `TWILIO_MEDIA_PUBLIC_BASE_URL`
+
 Frontend web deploy to Cloud Run:
 
 ```bash
@@ -544,7 +570,7 @@ For Android build, set `EXPO_PUBLIC_API_URL=https://BACKEND_SERVICE_URL` before 
 
 ## Known Limits
 
-- WhatsApp outbound audio needs a provider-supported public media URL/template. The backend returns audio in app/API responses now; WhatsApp provider delivery still depends on template/session capability.
+- WhatsApp outbound audio needs a public media URL. Twilio replies can publish generated audio through GCS/signed URLs when configured, with short-lived local media fallback for development.
 - `api.data.gov.in` IMD resource timed out locally, so the loaded IMD subdivision data currently comes from the downloaded CSV copy.
 - Maharain fetch uses `--insecure` because its certificate chain failed local Python CA verification.
 - Groundwater, soil-health baseline and agromet advisory rows should be loaded next for stronger recommendation precision.

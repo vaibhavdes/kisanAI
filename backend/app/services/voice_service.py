@@ -1,4 +1,5 @@
 import base64
+from binascii import Error as BinasciiError
 
 import requests
 
@@ -36,6 +37,7 @@ class VoiceService:
                     audio_base64=payload.audio_base64,
                     audio_uri=payload.audio_uri,
                     language=language,
+                    content_type=payload.audio_mime_type,
                 )
             )
             transcript = transcription.transcript
@@ -259,16 +261,29 @@ class VoiceService:
 
     def _load_audio(self, audio_base64: str | None, audio_uri: str | None) -> bytes:
         if audio_base64:
-            return base64.b64decode(audio_base64)
+            try:
+                return base64.b64decode(audio_base64, validate=True)
+            except (BinasciiError, ValueError) as exc:
+                raise VoiceProviderUnavailable("Invalid audio_base64 payload.") from exc
         if not audio_uri:
             raise VoiceProviderUnavailable("audio_base64 or audio_uri is required for transcription.")
         if audio_uri.startswith("gs://"):
             return self._load_gcs_audio(audio_uri)
         if audio_uri.startswith(("http://", "https://")):
-            response = requests.get(audio_uri, timeout=30)
-            response.raise_for_status()
-            return response.content
+            try:
+                response = requests.get(audio_uri, auth=self._twilio_media_auth(audio_uri), timeout=30)
+                response.raise_for_status()
+                return response.content
+            except requests.RequestException as exc:
+                raise VoiceProviderUnavailable(f"Audio media download failed: {exc}") from exc
         raise VoiceProviderUnavailable("Only base64, gs://, http://, and https:// audio inputs are supported.")
+
+    def _twilio_media_auth(self, uri: str) -> tuple[str, str] | None:
+        if "api.twilio.com" not in uri:
+            return None
+        if not settings.twilio_account_sid or not settings.twilio_auth_token:
+            return None
+        return settings.twilio_account_sid, settings.twilio_auth_token
 
     def _load_gcs_audio(self, audio_uri: str) -> bytes:
         from google.cloud import storage

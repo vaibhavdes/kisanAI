@@ -1,6 +1,8 @@
 import base64
 import json
 import os
+import re
+from urllib.parse import urlparse
 
 os.environ["DATA_STORE_PROVIDER"] = "local"
 os.environ["ENABLE_GOOGLE_INTEGRATIONS"] = "false"
@@ -12,14 +14,19 @@ from app.main import app
 from app.models.schemas import (
     AdvisoryTestResponse,
     DataSignal,
+    DiagnosisResult,
     GovernmentDataContextRequest,
     GovernmentDataContextResponse,
+    ProviderFeature,
+    ProviderName,
+    ProviderRoute,
     RiskLevel,
     SatelliteHistoryPoint,
     SatelliteSignalResponse,
     DetectLanguageResponse,
     TranslateTextResponse,
     WeatherContextRequest,
+    WhatsAppWebhookResponse,
     VoiceSpeakResponse,
     VoiceTranscribeResponse,
 )
@@ -28,7 +35,10 @@ from app.services.bigquery_ingestion_service import PublicDataIngestionService
 from app.services.bigquery_public_data_service import BigQueryPublicDataService
 from app.services.dialogflow_channel_service import DialogflowChannelResult
 from app.services.regional_cache_policy import RegionalCachePolicy
+from app.services.twilio_whatsapp_service import TwilioWhatsAppService
 from app.services.weather_context_service import WeatherContextService
+from app.services.vision_ocr_service import VisionOcrService, VisionProviderUnavailable
+from app.services.voice_service import VoiceProviderUnavailable, VoiceService
 from scripts.fetch_public_data_sources import (
     normalize_aspirational_districts,
     normalize_crop_csv,
@@ -138,6 +148,26 @@ def test_admin_dashboard_serves_provider_switch_ui() -> None:
     assert "Demo Alert Simulation" in response.text
     assert "/api/v1/alerts/run-daily" in response.text
     assert "/api/v1/expert/tickets" in response.text
+    assert 'sms_voice: ["authkey"]' in response.text
+
+
+def test_health_does_not_mark_live_twilio_ready_with_sandbox_sender(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "environment", "production")
+    monkeypatch.setattr(settings, "twilio_enable_live_send", True)
+    monkeypatch.setattr(settings, "twilio_account_sid", "AC123")
+    monkeypatch.setattr(settings, "twilio_auth_token", "token")
+    monkeypatch.setattr(settings, "twilio_whatsapp_from", "whatsapp:+14155238886")
+    monkeypatch.setattr(settings, "authkey_api_key", None)
+    monkeypatch.setattr(settings, "whatsapp_business_token", None)
+
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.json()["services"]["whatsappBusiness"] is False
+
+    monkeypatch.setattr(settings, "twilio_whatsapp_from", "whatsapp:+15551234567")
+    production_response = client.get("/health")
+    assert production_response.status_code == 200
+    assert production_response.json()["services"]["whatsappBusiness"] is True
 
 
 def test_admin_supporting_endpoints_list_farmers_and_tickets() -> None:
@@ -489,6 +519,107 @@ def test_twilio_whatsapp_text_location_and_media_webhooks() -> None:
     assert media_response.status_code == 200
     assert "Ticket" in media_response.text
 
+    malformed_media_count_response = client.post(
+        "/api/v1/twilio/whatsapp",
+        data={
+            "From": "whatsapp:+919970983794",
+            "MessageSid": "SM-MEDIA-MALFORMED-1",
+            "Body": "tomato leaf spot",
+            "NumMedia": "not-a-number",
+            "MediaUrl0": "https://api.twilio.com/media/example.jpg",
+            "MediaContentType0": "image/jpeg",
+            "Language": "en-IN",
+        },
+    )
+    assert malformed_media_count_response.status_code == 200
+    assert "Ticket" in malformed_media_count_response.text
+
+
+def test_twilio_whatsapp_audio_voice_note_returns_twiml_media(monkeypatch) -> None:
+    audio_url = "https://api.twilio.com/2010-04-01/Accounts/AC123/Messages/MM123/Media/ME123"
+
+    def fake_transcribe(self, payload):
+        assert payload.audio_uri == audio_url
+        assert payload.content_type == "audio/ogg"
+        assert payload.audio_encoding == "AUTO"
+        return VoiceTranscribeResponse(
+            transcript="Should I irrigate today?",
+            language="en-IN",
+            provider="sarvam_stt",
+        )
+
+    def fake_speak(self, payload):
+        assert payload.language == "en-IN"
+        assert "soil moisture" in payload.text
+        return VoiceSpeakResponse(
+            audio_base64=base64.b64encode(b"reply audio").decode("ascii"),
+            provider="sarvam_tts",
+            audio_encoding="MP3",
+            content_type="audio/mpeg; charset=binary",
+        )
+
+    monkeypatch.setattr(settings, "twilio_validate_webhooks", False)
+    monkeypatch.setattr(settings, "twilio_media_bucket", None)
+    monkeypatch.setattr(settings, "storage_bucket", None)
+    monkeypatch.setattr("app.services.voice_service.VoiceService.transcribe", fake_transcribe)
+    monkeypatch.setattr("app.services.voice_service.VoiceService.speak", fake_speak)
+
+    response = client.post(
+        "/api/v1/twilio/whatsapp",
+        data={
+            "From": "whatsapp:+919970983794",
+            "MessageSid": "SM-AUDIO-1",
+            "NumMedia": "1",
+            "MediaUrl0": audio_url,
+            "MediaContentType0": "audio/ogg",
+            "Language": "en-IN",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/xml")
+    assert "soil moisture" in response.text
+    media_match = re.search(r"<Media>([^<]+)</Media>", response.text)
+    assert media_match is not None
+    media_url = urlparse(media_match.group(1))
+    media_response = client.get(f"{media_url.path}?{media_url.query}")
+    assert media_response.status_code == 200
+    assert media_response.content == b"reply audio"
+    assert media_response.headers["content-type"].startswith("audio/mpeg")
+    assert "reply.mp3" in media_response.headers["content-disposition"]
+
+    farmer = store.list_farmers()[0]
+    messages = store.list_conversation_messages(farmer.id)
+    farmer_message = messages[0]
+    assert farmer_message.text == "Should I irrigate today?"
+    assert farmer_message.metadata["media_type"] == "audio"
+    assert farmer_message.metadata["has_audio"] is True
+
+
+def test_twilio_whatsapp_document_media_gets_clear_response() -> None:
+    response = client.post(
+        "/api/v1/twilio/whatsapp",
+        data={
+            "From": "whatsapp:+919970983794",
+            "MessageSid": "SM-DOC-1",
+            "NumMedia": "1",
+            "MediaUrl0": "https://api.twilio.com/media/soil-card.pdf",
+            "MediaContentType0": "application/pdf",
+            "Language": "en-IN",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/xml")
+    assert "Document received" in response.text
+
+    farmer = store.list_farmers()[0]
+    tickets = store.list_tickets(farmer.id)
+    assert tickets == []
+    messages = store.list_conversation_messages(farmer.id)
+    assert messages[0].metadata["media_type"] == "document"
+    assert messages[0].metadata["has_media"] is True
+
 
 def test_twilio_sms_and_voice_webhooks_return_twiml() -> None:
     sms_response = client.post(
@@ -528,6 +659,60 @@ def test_twilio_sms_and_voice_webhooks_return_twiml() -> None:
     )
     assert dtmf_response.status_code == 200
     assert "soil" in dtmf_response.text.lower()
+
+
+def test_twilio_sms_and_voice_webhooks_reject_unsigned_request_when_validation_enabled(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "twilio_validate_webhooks", True)
+    monkeypatch.setattr(settings, "twilio_auth_token", "test-token")
+
+    sms_response = client.post(
+        "/api/v1/twilio/sms",
+        data={
+            "From": "+919970983794",
+            "MessageSid": "SM-SMS-UNSIGNED-1",
+            "Body": "WATER MAIZE 414001",
+        },
+    )
+    assert sms_response.status_code == 403
+
+    voice_response = client.post(
+        "/api/v1/twilio/voice",
+        data={
+            "From": "+919970983794",
+            "CallSid": "CA-UNSIGNED-1",
+            "SpeechResult": "Should I irrigate today",
+        },
+    )
+    assert voice_response.status_code == 403
+
+
+def test_invalid_base64_media_uses_service_level_errors() -> None:
+    audio_response = client.post(
+        "/api/v1/chat/message",
+        json={
+            "from_phone": "+91 99709 83796",
+            "audio_base64": "not-base64!",
+            "audio_mime_type": "audio/mp4",
+            "media_type": "audio",
+            "language": "en-IN",
+        },
+    )
+    assert audio_response.status_code == 200
+    assert audio_response.json()["intent"] == "voice_message"
+
+    try:
+        VoiceService()._load_audio("not-base64!", None)
+    except VoiceProviderUnavailable as exc:
+        assert "Invalid audio_base64" in str(exc)
+    else:
+        raise AssertionError("Invalid audio base64 should be reported as VoiceProviderUnavailable")
+
+    try:
+        VisionOcrService()._load_optional_image("not-base64!", None)
+    except VisionProviderUnavailable as exc:
+        assert "Invalid image_base64" in str(exc)
+    else:
+        raise AssertionError("Invalid image base64 should be reported as VisionProviderUnavailable")
 
 
 def test_whatsapp_location_updates_farmer_farm_coordinates() -> None:
@@ -657,6 +842,263 @@ def test_alert_delivery_uses_whatsapp_media_template_when_media_url_exists(monke
     assert result["status"] == "dry_run"
     assert result["operation"] == "send_whatsapp_media_template_get"
     assert result["metadata"]["method"] == "GET"
+
+
+def test_alert_delivery_falls_back_to_twilio_when_authkey_is_unavailable(monkeypatch) -> None:
+    farmer_id = create_demo_farmer()
+    monkeypatch.setattr(settings, "authkey_api_key", None)
+    monkeypatch.setattr(settings, "twilio_enable_live_send", False)
+    monkeypatch.setattr(settings, "twilio_content_sid", None)
+
+    response = client.post(
+        "/api/v1/alerts/deliver",
+        json={
+            "farmer_id": farmer_id,
+            "message": "Heavy rain risk today. Keep drainage open.",
+            "alert_plan": {
+                "priority": "urgent",
+                "channels": ["whatsapp"],
+                "reason": "Critical rainfall risk.",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["overall_status"] == "dry_run"
+    result = body["results"][0]
+    assert result["provider"] == "twilio"
+    assert result["status"] == "dry_run"
+    assert result["metadata"]["fallback"] is True
+    assert result["metadata"]["fallbackFrom"] == "authkey:skipped_no_authkey"
+
+
+def test_alert_delivery_uses_twilio_whatsapp_dry_run_when_route_is_twilio(monkeypatch) -> None:
+    farmer_id = create_demo_farmer()
+    monkeypatch.setattr(settings, "twilio_enable_live_send", False)
+    monkeypatch.setattr(settings, "twilio_content_sid", None)
+
+    route_response = client.patch(
+        "/api/v1/providers/config",
+        json={"routes": {"whatsapp": {"primary": "twilio", "secondary": "authkey"}}},
+    )
+    assert route_response.status_code == 200
+
+    response = client.post(
+        "/api/v1/alerts/deliver",
+        json={
+            "farmer_id": farmer_id,
+            "message": "Heavy rain risk today. Keep drainage open.",
+            "alert_plan": {
+                "priority": "urgent",
+                "channels": ["whatsapp"],
+                "reason": "Critical rainfall risk.",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["overall_status"] == "dry_run"
+    result = body["results"][0]
+    assert result["provider"] == "twilio"
+    assert result["status"] == "dry_run"
+    assert result["operation"] == "send_twilio_whatsapp_text"
+    assert result["metadata"]["to"] == "whatsapp:+919999999999"
+
+    media_response = client.post(
+        "/api/v1/alerts/deliver",
+        json={
+            "farmer_id": farmer_id,
+            "message": "Satellite stress map is ready.",
+            "media_url": "https://storage.googleapis.com/demo/stress-map.png",
+            "media_file_name": "stress-map.png",
+            "alert_plan": {
+                "priority": "high",
+                "channels": ["whatsapp"],
+                "reason": "Satellite water stress.",
+            },
+        },
+    )
+
+    assert media_response.status_code == 200
+    media_result = media_response.json()["results"][0]
+    assert media_result["provider"] == "twilio"
+    assert media_result["status"] == "dry_run"
+    assert media_result["operation"] == "send_twilio_whatsapp_media"
+    assert media_result["metadata"]["hasMedia"] is True
+
+
+def test_twilio_template_alert_includes_media_variables(monkeypatch) -> None:
+    farmer_id = create_demo_farmer()
+    monkeypatch.setattr(settings, "twilio_enable_live_send", False)
+    monkeypatch.setattr(settings, "twilio_content_sid", "HX123")
+    monkeypatch.setattr(settings, "twilio_content_variables", None)
+
+    route_response = client.patch(
+        "/api/v1/providers/config",
+        json={"routes": {"whatsapp": {"primary": "twilio", "secondary": None}}},
+    )
+    assert route_response.status_code == 200
+
+    response = client.post(
+        "/api/v1/alerts/deliver",
+        json={
+            "farmer_id": farmer_id,
+            "message": "Satellite stress map is ready.",
+            "media_url": "https://storage.googleapis.com/demo/stress-map.png",
+            "media_file_name": "stress-map.png",
+            "alert_plan": {
+                "priority": "high",
+                "channels": ["whatsapp"],
+                "reason": "Satellite water stress.",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    result = response.json()["results"][0]
+    assert result["provider"] == "twilio"
+    assert result["operation"] == "send_twilio_whatsapp_template"
+    assert result["metadata"]["hasContentTemplate"] is True
+    assert result["metadata"]["contentVariableKeys"] == "1,2,3"
+
+
+def test_twilio_live_queued_send_is_accepted_not_delivered(monkeypatch) -> None:
+    farmer_id = create_demo_farmer()
+    monkeypatch.setattr(settings, "twilio_enable_live_send", True)
+    monkeypatch.setattr(settings, "twilio_account_sid", "AC123")
+    monkeypatch.setattr(settings, "twilio_auth_token", "token")
+    monkeypatch.setattr(settings, "twilio_content_sid", None)
+
+    class FakeTwilioResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, str | None]:
+            return {"sid": "SM-QUEUED-1", "status": "queued", "error_code": None}
+
+    def fake_post(*args, **kwargs):
+        return FakeTwilioResponse()
+
+    monkeypatch.setattr("app.services.twilio_whatsapp_service.requests.post", fake_post)
+    route_response = client.patch(
+        "/api/v1/providers/config",
+        json={"routes": {"whatsapp": {"primary": "twilio", "secondary": None}}},
+    )
+    assert route_response.status_code == 200
+
+    response = client.post(
+        "/api/v1/alerts/deliver",
+        json={
+            "farmer_id": farmer_id,
+            "message": "Heavy rain risk today. Keep drainage open.",
+            "alert_plan": {
+                "priority": "urgent",
+                "channels": ["whatsapp"],
+                "reason": "Critical rainfall risk.",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["overall_status"] == "accepted"
+    result = body["results"][0]
+    assert result["provider_message_id"] == "SM-QUEUED-1"
+    assert result["status"] == "queued"
+    assert result["sent"] is False
+    assert result["metadata"]["accepted"] is True
+
+
+def test_twilio_response_audio_skips_memory_media_in_production_when_bucket_publish_fails(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "environment", "production")
+    monkeypatch.setattr(settings, "twilio_media_bucket", "reply-bucket")
+    monkeypatch.setattr(settings, "storage_bucket", None)
+    monkeypatch.setattr(TwilioWhatsAppService, "_publish_response_media", lambda self, content, content_type: None)
+
+    xml = TwilioWhatsAppService().twiml_response(
+        WhatsAppWebhookResponse(
+            intent="voice_message",
+            reply="Audio reply",
+            response_audio_base64=base64.b64encode(b"reply audio").decode("ascii"),
+            response_audio_content_type="audio/mpeg",
+        ),
+        base_url="https://kisan.example.com",
+        status_callback_url=None,
+    )
+    assert "Audio reply" in xml
+    assert "<Media>" not in xml
+
+
+def test_twilio_status_callback_saves_whatsapp_receipt() -> None:
+    response = client.post(
+        "/api/v1/twilio/status",
+        data={
+            "MessageSid": "SM-TWILIO-STATUS-1",
+            "MessageStatus": "delivered",
+            "To": "whatsapp:+919970983794",
+            "From": "whatsapp:+14155238886",
+            "ErrorCode": "",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["saved"] is True
+    receipt = body["receipt"]
+    assert receipt["provider"] == "twilio"
+    assert receipt["channel"] == "whatsapp"
+    assert receipt["provider_message_id"] == "SM-TWILIO-STATUS-1"
+    assert receipt["phone"] == "+919970983794"
+    assert receipt["status"] == "delivered"
+    assert receipt["normalized_status"] == "delivered"
+    assert receipt["raw_payload"]["MessageStatus"] == "delivered"
+
+
+def test_twilio_status_callback_rejects_unsigned_request_when_validation_enabled(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "twilio_validate_webhooks", True)
+    monkeypatch.setattr(settings, "twilio_auth_token", "test-token")
+
+    response = client.post(
+        "/api/v1/twilio/status",
+        data={
+            "MessageSid": "SM-TWILIO-STATUS-2",
+            "MessageStatus": "delivered",
+            "To": "whatsapp:+919970983794",
+            "From": "whatsapp:+14155238886",
+        },
+    )
+
+    assert response.status_code == 403
+
+
+def test_twilio_signature_validation_accepts_configured_public_base_url(monkeypatch) -> None:
+    from twilio.request_validator import RequestValidator
+
+    public_base_url = "https://kisan.example.com"
+    form = {
+        "MessageSid": "SM-TWILIO-SIGNED-1",
+        "MessageStatus": "delivered",
+        "To": "whatsapp:+919970983794",
+        "From": "whatsapp:+14155238886",
+    }
+    signature = RequestValidator("test-token").compute_signature(
+        f"{public_base_url}/api/v1/twilio/status",
+        form,
+    )
+    monkeypatch.setattr(settings, "twilio_validate_webhooks", True)
+    monkeypatch.setattr(settings, "twilio_auth_token", "test-token")
+    monkeypatch.setattr(settings, "twilio_public_base_url", public_base_url)
+
+    response = client.post(
+        "/api/v1/twilio/status",
+        data=form,
+        headers={"X-Twilio-Signature": signature},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["receipt"]["provider_message_id"] == "SM-TWILIO-SIGNED-1"
 
 
 def test_channel_delivery_receipts_are_normalized_and_saved() -> None:
@@ -2049,6 +2491,9 @@ def test_provider_config_can_be_switched_by_feature() -> None:
     assert routes["vision_ocr"]["secondary"] == "gemini_vision"
     assert routes["satellite"]["primary"] == "earth_engine"
     assert routes["satellite"]["allow_fallback"] is False
+    assert routes["sms_voice"]["primary"] == "authkey"
+    assert routes["sms_voice"]["secondary"] is None
+    assert routes["sms_voice"]["allow_fallback"] is False
 
     update_response = client.patch(
         "/api/v1/providers/config",
@@ -2067,8 +2512,52 @@ def test_provider_config_can_be_switched_by_feature() -> None:
     assert updated["weather"]["primary"] == "open_meteo"
     assert updated["weather"]["secondary"] == "imd"
 
+    clear_fallback_response = client.patch(
+        "/api/v1/providers/config",
+        json={"routes": {"whatsapp": {"primary": "authkey", "secondary": None, "allow_fallback": False}}},
+    )
+    assert clear_fallback_response.status_code == 200
+    cleared = {item["feature"]: item for item in clear_fallback_response.json()["routes"]}
+    assert cleared["whatsapp"]["secondary"] is None
+    assert cleared["whatsapp"]["allow_fallback"] is False
+
     invalid_response = client.patch(
         "/api/v1/providers/config",
         json={"routes": {"satellite": {"primary": "earth_engine", "secondary": "osm_nominatim"}}},
     )
     assert invalid_response.status_code == 400
+
+    invalid_sms_voice_primary = client.patch(
+        "/api/v1/providers/config",
+        json={"routes": {"sms_voice": {"primary": "twilio"}}},
+    )
+    assert invalid_sms_voice_primary.status_code == 400
+
+    invalid_sms_voice_secondary = client.patch(
+        "/api/v1/providers/config",
+        json={"routes": {"sms_voice": {"secondary": "twilio"}}},
+    )
+    assert invalid_sms_voice_secondary.status_code == 400
+
+
+def test_provider_config_normalizes_stale_sms_voice_twilio_fallback() -> None:
+    store.save_provider_route(
+        ProviderRoute(
+            feature=ProviderFeature.sms_voice,
+            primary=ProviderName.authkey,
+            secondary=ProviderName.twilio,
+            allow_fallback=True,
+        )
+    )
+
+    response = client.get("/api/v1/providers/config")
+    assert response.status_code == 200
+    routes = {item["feature"]: item for item in response.json()["routes"]}
+    assert routes["sms_voice"]["primary"] == "authkey"
+    assert routes["sms_voice"]["secondary"] is None
+    assert routes["sms_voice"]["allow_fallback"] is False
+
+    persisted = store.get_provider_route(ProviderFeature.sms_voice)
+    assert persisted.primary == ProviderName.authkey
+    assert persisted.secondary is None
+    assert persisted.allow_fallback is False

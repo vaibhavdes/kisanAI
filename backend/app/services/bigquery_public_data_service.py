@@ -8,10 +8,12 @@ from app.services.imd_region_mapping import maharashtra_imd_subdivision_for_dist
 
 class BigQueryPublicDataService:
     def __init__(self, client: Any | None = None) -> None:
+        self._bigquery = self._load_bigquery_module()
         if client is None:
-            from google.cloud import bigquery
-
-            client = bigquery.Client(project=settings.google_cloud_project)
+            if self._bigquery is None:
+                client = _UnavailableBigQueryClient()
+            else:
+                client = self._bigquery.Client(project=settings.google_cloud_project)
         self.client = client
 
     def build_context(self, payload: GovernmentDataContextRequest) -> GovernmentDataContextResponse:
@@ -296,7 +298,7 @@ class BigQueryPublicDataService:
         *,
         extra: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
-        from google.cloud import bigquery
+        bigquery = self._bigquery or _BigQueryTestShim
 
         params: list[Any] = [
             bigquery.ScalarQueryParameter("state", "STRING", payload.state),
@@ -312,6 +314,13 @@ class BigQueryPublicDataService:
         query = sql.format(project=settings.google_cloud_project, dataset=settings.bigquery_public_dataset)
         return [dict(row.items()) for row in self.client.query(query, job_config=job_config).result()]
 
+    def _load_bigquery_module(self):
+        try:
+            from google.cloud import bigquery
+        except ImportError:
+            return None
+        return bigquery
+
     def _missing(self, source: str, note: str) -> DataSignal:
         return DataSignal(available=False, source=source, note=note)
 
@@ -320,3 +329,20 @@ class BigQueryPublicDataService:
 
     def _int(self, value: Any) -> int | None:
         return int(value) if value is not None else None
+
+
+class _BigQueryTestShim:
+    class ScalarQueryParameter:
+        def __init__(self, name: str, param_type: str, value: Any) -> None:
+            self.name = name
+            self.param_type = param_type
+            self.value = value
+
+    class QueryJobConfig:
+        def __init__(self, query_parameters: list[Any]) -> None:
+            self.query_parameters = query_parameters
+
+
+class _UnavailableBigQueryClient:
+    def query(self, query: str, job_config: Any | None = None):
+        raise RuntimeError("google-cloud-bigquery is required for BigQuery public data queries.")

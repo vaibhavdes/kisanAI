@@ -404,7 +404,13 @@ def default_provider_routes() -> dict[ProviderFeature, ProviderRoute]:
             secondary=ProviderName.osm_nominatim,
         ),
         ProviderRoute(feature=ProviderFeature.whatsapp, primary=ProviderName.authkey, secondary=ProviderName.twilio),
-        ProviderRoute(feature=ProviderFeature.sms_voice, primary=ProviderName.authkey, secondary=ProviderName.twilio),
+        ProviderRoute(
+            feature=ProviderFeature.sms_voice,
+            primary=ProviderName.authkey,
+            secondary=None,
+            allow_fallback=False,
+            note="Outbound SMS and voice-call delivery uses Authkey; Twilio SMS/voice endpoints are inbound webhooks.",
+        ),
     ]
     return {route.feature: route for route in routes}
 
