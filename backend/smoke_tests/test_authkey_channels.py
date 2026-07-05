@@ -13,8 +13,6 @@ authkey = require_env("AUTHKEY_API_KEY")
 mobile = require_env("AUTHKEY_TEST_MOBILE")
 country_code = optional_env("AUTHKEY_TEST_COUNTRY_CODE", "91") or "91"
 sender = optional_env("AUTHKEY_SMS_SENDER", "KISAN") or "KISAN"
-template_id = optional_env("AUTHKEY_WHATSAPP_TEMPLATE_ID", "101") or "101"
-media_template_id = optional_env("AUTHKEY_WHATSAPP_MEDIA_TEMPLATE_ID", template_id) or template_id
 send_enabled = enabled("AUTHKEY_SEND_ENABLED")
 
 client = AuthkeyClient(authkey)
@@ -49,35 +47,6 @@ results = [
         voice=voice_message,
         fallback_sms=message,
         sender=sender,
-        dry_run=not send_enabled,
-    ),
-    client.send_whatsapp_template_get(
-        mobile=mobile,
-        country_code=country_code,
-        template_id=template_id,
-        body_values={"1": "Vaibhav", "2": "Heavy rain alert"},
-        dry_run=not send_enabled,
-    ),
-    client.send_whatsapp_template_json(
-        mobile=mobile,
-        country_code=country_code,
-        template_id=template_id,
-        body_values={"1": "Vaibhav", "2": "Heavy rain alert"},
-        dry_run=not send_enabled,
-    ),
-    client.send_whatsapp_media_template_get(
-        mobile=mobile,
-        country_code=country_code,
-        template_id=media_template_id,
-        header_file_name="KisanAI",
-        header_data_url="https://www.gstatic.com/webp/gallery/1.jpg",
-        dry_run=not send_enabled,
-    ),
-    client.send_whatsapp_bulk_template_json(
-        mobiles=[mobile],
-        country_code=country_code,
-        template_id=template_id,
-        body_values={"1": "Vaibhav"},
         dry_run=not send_enabled,
     ),
 ]

@@ -17,7 +17,7 @@ ALLOWED_PROVIDERS: dict[ProviderFeature, set[ProviderName]] = {
     ProviderFeature.vision_ocr: {ProviderName.gemini_vision, ProviderName.vertex_ai_vision},
     ProviderFeature.satellite: {ProviderName.earth_engine},
     ProviderFeature.geocoding_maps: {ProviderName.google_maps, ProviderName.osm_nominatim},
-    ProviderFeature.whatsapp: {ProviderName.authkey, ProviderName.twilio},
+    ProviderFeature.whatsapp: {ProviderName.twilio},
     ProviderFeature.sms_voice: {ProviderName.authkey},
 }
 
@@ -34,7 +34,7 @@ class ProviderConfigService:
             current = store.get_provider_route(feature)
             primary = update.primary or current.primary
             secondary = update.secondary if "secondary" in update.model_fields_set else current.secondary
-            if feature == ProviderFeature.sms_voice:
+            if feature in {ProviderFeature.whatsapp, ProviderFeature.sms_voice}:
                 secondary = update.secondary
             self._validate_route(feature, primary, secondary)
 
@@ -49,6 +49,9 @@ class ProviderConfigService:
                 note=update.note if "note" in update.model_fields_set else current.note,
             )
             if feature == ProviderFeature.satellite:
+                route.allow_fallback = False
+                route.secondary = None
+            if feature == ProviderFeature.whatsapp:
                 route.allow_fallback = False
                 route.secondary = None
             if feature == ProviderFeature.sms_voice:
@@ -85,8 +88,21 @@ class ProviderConfigService:
                     secondary=None,
                     allow_fallback=False,
                     enabled=route.enabled,
-                    note=route.note
-                    or "Outbound SMS and voice-call delivery uses Authkey; Twilio SMS/voice endpoints are inbound webhooks.",
+                    note="Outbound SMS and voice-call delivery uses Authkey only.",
+                )
+                store.save_provider_route(route)
+            if route.feature == ProviderFeature.whatsapp and (
+                route.primary != ProviderName.twilio
+                or route.secondary is not None
+                or route.allow_fallback
+            ):
+                route = ProviderRoute(
+                    feature=ProviderFeature.whatsapp,
+                    primary=ProviderName.twilio,
+                    secondary=None,
+                    allow_fallback=False,
+                    enabled=route.enabled,
+                    note="WhatsApp inbound and outbound delivery uses Twilio only.",
                 )
                 store.save_provider_route(route)
             routes.append(route)

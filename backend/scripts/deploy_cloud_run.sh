@@ -112,8 +112,6 @@ RYTHU_SEVA_DEFAULT_CENTER=${RYTHU_SEVA_DEFAULT_CENTER},\
 IMD_API_BASE_URL=${IMD_API_BASE_URL:-},\
 AUTHKEY_TEST_COUNTRY_CODE=${AUTHKEY_TEST_COUNTRY_CODE:-91},\
 AUTHKEY_SMS_SENDER=${AUTHKEY_SMS_SENDER:-},\
-AUTHKEY_WHATSAPP_TEMPLATE_ID=${AUTHKEY_WHATSAPP_TEMPLATE_ID:-},\
-AUTHKEY_WHATSAPP_MEDIA_TEMPLATE_ID=${AUTHKEY_WHATSAPP_MEDIA_TEMPLATE_ID:-},\
 AUTHKEY_SEND_ENABLED=${AUTHKEY_SEND_ENABLED:-false},\
 TWILIO_WHATSAPP_FROM=${TWILIO_WHATSAPP_FROM:-whatsapp:+14155238886},\
 TWILIO_MESSAGING_SERVICE_SID=${TWILIO_MESSAGING_SERVICE_SID:-},\
@@ -186,7 +184,6 @@ echo "Cloud Run URL: ${SERVICE_URL}"
 echo "Health: ${SERVICE_URL}/health"
 echo "Admin: ${SERVICE_URL}/admin"
 echo "Dialogflow webhook: ${SERVICE_URL}/api/v1/dialogflow/webhook"
-echo "WhatsApp webhook: ${SERVICE_URL}/api/v1/whatsapp/webhook"
 echo "Twilio WhatsApp webhook: ${SERVICE_URL}/api/v1/twilio/whatsapp"
 echo "Twilio status callback: ${SERVICE_URL}/api/v1/twilio/status"
 echo "SMS webhook: ${SERVICE_URL}/api/v1/sms/webhook"

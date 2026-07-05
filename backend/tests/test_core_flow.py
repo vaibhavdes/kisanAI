@@ -376,7 +376,8 @@ def test_whatsapp_text_identifies_farmer_and_logs_conversation() -> None:
     body = response.json()
     assert body["farmer_id"]
     assert body["intent"] == "irrigation_advisory"
-    assert body["delivery_status"] in {"skipped_no_authkey", "skipped_no_template", "dry_run"}
+    assert body["outbound_provider"] == "twilio"
+    assert body["delivery_status"] == "reply_returned_to_twilio"
 
     recent = client.get(f"/api/v1/conversations/{body['farmer_id']}")
     assert recent.status_code == 200
@@ -790,8 +791,9 @@ def test_alert_delivery_uses_configured_channels_in_dry_run(monkeypatch) -> None
     farmer_id = create_demo_farmer()
     monkeypatch.setattr(settings, "authkey_api_key", "secret-key")
     monkeypatch.setattr(settings, "authkey_sms_sender", "KISAN")
-    monkeypatch.setattr(settings, "authkey_whatsapp_template_id", "template-1")
     monkeypatch.setattr(settings, "authkey_send_enabled", False)
+    monkeypatch.setattr(settings, "twilio_enable_live_send", False)
+    monkeypatch.setattr(settings, "twilio_content_sid", None)
 
     response = client.post(
         "/api/v1/alerts/deliver",
@@ -811,16 +813,15 @@ def test_alert_delivery_uses_configured_channels_in_dry_run(monkeypatch) -> None
     body = response.json()
     assert body["overall_status"] == "dry_run"
     assert {item["channel"] for item in body["results"]} == {"whatsapp", "sms", "voice_call"}
-    assert all(item["provider"] == "authkey" for item in body["results"])
+    providers = {item["channel"]: item["provider"] for item in body["results"]}
+    assert providers == {"whatsapp": "twilio", "sms": "authkey", "voice_call": "authkey"}
     assert all(item["status"] == "dry_run" for item in body["results"])
 
 
-def test_alert_delivery_uses_whatsapp_media_template_when_media_url_exists(monkeypatch) -> None:
+def test_alert_delivery_uses_twilio_whatsapp_media_when_media_url_exists(monkeypatch) -> None:
     farmer_id = create_demo_farmer()
-    monkeypatch.setattr(settings, "authkey_api_key", "secret-key")
-    monkeypatch.setattr(settings, "authkey_whatsapp_template_id", "template-1")
-    monkeypatch.setattr(settings, "authkey_whatsapp_media_template_id", "media-template-1")
-    monkeypatch.setattr(settings, "authkey_send_enabled", False)
+    monkeypatch.setattr(settings, "twilio_enable_live_send", False)
+    monkeypatch.setattr(settings, "twilio_content_sid", None)
 
     response = client.post(
         "/api/v1/alerts/deliver",
@@ -839,12 +840,13 @@ def test_alert_delivery_uses_whatsapp_media_template_when_media_url_exists(monke
 
     assert response.status_code == 200
     result = response.json()["results"][0]
+    assert result["provider"] == "twilio"
     assert result["status"] == "dry_run"
-    assert result["operation"] == "send_whatsapp_media_template_get"
-    assert result["metadata"]["method"] == "GET"
+    assert result["operation"] == "send_twilio_whatsapp_media"
+    assert result["metadata"]["hasMedia"] is True
 
 
-def test_alert_delivery_falls_back_to_twilio_when_authkey_is_unavailable(monkeypatch) -> None:
+def test_alert_delivery_uses_twilio_whatsapp_without_authkey(monkeypatch) -> None:
     farmer_id = create_demo_farmer()
     monkeypatch.setattr(settings, "authkey_api_key", None)
     monkeypatch.setattr(settings, "twilio_enable_live_send", False)
@@ -869,8 +871,6 @@ def test_alert_delivery_falls_back_to_twilio_when_authkey_is_unavailable(monkeyp
     result = body["results"][0]
     assert result["provider"] == "twilio"
     assert result["status"] == "dry_run"
-    assert result["metadata"]["fallback"] is True
-    assert result["metadata"]["fallbackFrom"] == "authkey:skipped_no_authkey"
 
 
 def test_alert_delivery_uses_twilio_whatsapp_dry_run_when_route_is_twilio(monkeypatch) -> None:
@@ -878,10 +878,7 @@ def test_alert_delivery_uses_twilio_whatsapp_dry_run_when_route_is_twilio(monkey
     monkeypatch.setattr(settings, "twilio_enable_live_send", False)
     monkeypatch.setattr(settings, "twilio_content_sid", None)
 
-    route_response = client.patch(
-        "/api/v1/providers/config",
-        json={"routes": {"whatsapp": {"primary": "twilio", "secondary": "authkey"}}},
-    )
+    route_response = client.patch("/api/v1/providers/config", json={"routes": {"whatsapp": {"primary": "twilio"}}})
     assert route_response.status_code == 200
 
     response = client.post(
@@ -1139,8 +1136,8 @@ def test_daily_alert_runner_generates_and_delivers_high_risk_alert(monkeypatch) 
     farmer_id = create_demo_farmer()
     monkeypatch.setattr(settings, "authkey_api_key", "secret-key")
     monkeypatch.setattr(settings, "authkey_sms_sender", "KISAN")
-    monkeypatch.setattr(settings, "authkey_whatsapp_template_id", "template-1")
     monkeypatch.setattr(settings, "authkey_send_enabled", False)
+    monkeypatch.setattr(settings, "twilio_enable_live_send", False)
 
     response = client.post(
         "/api/v1/alerts/run-daily",
@@ -1192,8 +1189,8 @@ def test_daily_alert_runner_accepts_pubsub_push_payload(monkeypatch) -> None:
     farmer_id = create_demo_farmer()
     monkeypatch.setattr(settings, "authkey_api_key", "secret-key")
     monkeypatch.setattr(settings, "authkey_sms_sender", "KISAN")
-    monkeypatch.setattr(settings, "authkey_whatsapp_template_id", "template-1")
     monkeypatch.setattr(settings, "authkey_send_enabled", False)
+    monkeypatch.setattr(settings, "twilio_enable_live_send", False)
     data = {
         "farmer_ids": [farmer_id],
         "crop": "maize",
@@ -2491,6 +2488,9 @@ def test_provider_config_can_be_switched_by_feature() -> None:
     assert routes["vision_ocr"]["secondary"] == "gemini_vision"
     assert routes["satellite"]["primary"] == "earth_engine"
     assert routes["satellite"]["allow_fallback"] is False
+    assert routes["whatsapp"]["primary"] == "twilio"
+    assert routes["whatsapp"]["secondary"] is None
+    assert routes["whatsapp"]["allow_fallback"] is False
     assert routes["sms_voice"]["primary"] == "authkey"
     assert routes["sms_voice"]["secondary"] is None
     assert routes["sms_voice"]["allow_fallback"] is False
@@ -2512,14 +2512,21 @@ def test_provider_config_can_be_switched_by_feature() -> None:
     assert updated["weather"]["primary"] == "open_meteo"
     assert updated["weather"]["secondary"] == "imd"
 
-    clear_fallback_response = client.patch(
+    whatsapp_update_response = client.patch(
         "/api/v1/providers/config",
-        json={"routes": {"whatsapp": {"primary": "authkey", "secondary": None, "allow_fallback": False}}},
+        json={"routes": {"whatsapp": {"primary": "twilio", "secondary": None, "allow_fallback": True}}},
     )
-    assert clear_fallback_response.status_code == 200
-    cleared = {item["feature"]: item for item in clear_fallback_response.json()["routes"]}
+    assert whatsapp_update_response.status_code == 200
+    cleared = {item["feature"]: item for item in whatsapp_update_response.json()["routes"]}
+    assert cleared["whatsapp"]["primary"] == "twilio"
     assert cleared["whatsapp"]["secondary"] is None
     assert cleared["whatsapp"]["allow_fallback"] is False
+
+    invalid_whatsapp_primary = client.patch(
+        "/api/v1/providers/config",
+        json={"routes": {"whatsapp": {"primary": "authkey"}}},
+    )
+    assert invalid_whatsapp_primary.status_code == 400
 
     invalid_response = client.patch(
         "/api/v1/providers/config",
@@ -2538,6 +2545,29 @@ def test_provider_config_can_be_switched_by_feature() -> None:
         json={"routes": {"sms_voice": {"secondary": "twilio"}}},
     )
     assert invalid_sms_voice_secondary.status_code == 400
+
+
+def test_provider_config_normalizes_stale_whatsapp_authkey_route() -> None:
+    store.save_provider_route(
+        ProviderRoute(
+            feature=ProviderFeature.whatsapp,
+            primary=ProviderName.authkey,
+            secondary=ProviderName.twilio,
+            allow_fallback=True,
+        )
+    )
+
+    response = client.get("/api/v1/providers/config")
+    assert response.status_code == 200
+    routes = {item["feature"]: item for item in response.json()["routes"]}
+    assert routes["whatsapp"]["primary"] == "twilio"
+    assert routes["whatsapp"]["secondary"] is None
+    assert routes["whatsapp"]["allow_fallback"] is False
+
+    persisted = store.get_provider_route(ProviderFeature.whatsapp)
+    assert persisted.primary == ProviderName.twilio
+    assert persisted.secondary is None
+    assert persisted.allow_fallback is False
 
 
 def test_provider_config_normalizes_stale_sms_voice_twilio_fallback() -> None:

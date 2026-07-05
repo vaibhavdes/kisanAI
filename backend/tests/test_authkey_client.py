@@ -15,7 +15,7 @@ def test_authkey_dry_run_masks_key_and_builds_sms_request() -> None:
     assert result.params["sms"] == "Test alert"
 
 
-def test_authkey_dry_run_builds_voice_fallback_and_whatsapp_payload() -> None:
+def test_authkey_dry_run_builds_voice_fallback_payload() -> None:
     client = AuthkeyClient("secret-key")
 
     fallback = client.send_voice_with_sms_fallback(
@@ -25,19 +25,6 @@ def test_authkey_dry_run_builds_voice_fallback_and_whatsapp_payload() -> None:
         fallback_sms="SMS fallback",
         sender="KISAN",
     )
-    whatsapp = client.send_whatsapp_template_json(
-        mobile="9970000000",
-        country_code="91",
-        template_id="101",
-        body_values={"1": "Farmer", "2": "Rain alert"},
-    )
 
     assert fallback.params["fb1sms"] == "SMS fallback"
     assert fallback.params["authkey"] == "***hidden***"
-    assert whatsapp.payload == {
-        "country_code": "91",
-        "mobile": "9970000000",
-        "wid": "101",
-        "type": "text",
-        "bodyValues": {"1": "Farmer", "2": "Rain alert"},
-    }

@@ -34,8 +34,6 @@ class Settings(BaseSettings):
     authkey_test_mobile: str | None = None
     authkey_test_country_code: str = "91"
     authkey_sms_sender: str | None = None
-    authkey_whatsapp_template_id: str | None = None
-    authkey_whatsapp_media_template_id: str | None = None
     authkey_send_enabled: bool = False
     twilio_account_sid: str | None = None
     twilio_auth_token: str | None = None

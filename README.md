@@ -56,7 +56,7 @@ flowchart LR
   Backend --> AI["Vertex AI / Gemini"]
   Backend --> Voice["Google STT/TTS -> Sarvam"]
   Backend --> Satellite["Earth Engine"]
-  Backend --> Alerts["Authkey SMS + voice, WhatsApp templates"]
+  Backend --> Alerts["Twilio WhatsApp, Authkey SMS + voice"]
 ```
 
 ## Google Cloud And Service Usage
@@ -195,8 +195,6 @@ DIALOGFLOW_ENVIRONMENT_ID=
 DIALOGFLOW_LOCATION=global
 AUTHKEY_API_KEY=
 AUTHKEY_SMS_SENDER=
-AUTHKEY_WHATSAPP_TEMPLATE_ID=
-AUTHKEY_WHATSAPP_MEDIA_TEMPLATE_ID=
 AUTHKEY_SEND_ENABLED=false
 IMD_API_BASE_URL=
 IMD_API_KEY=
@@ -473,7 +471,6 @@ Useful endpoints:
 | `POST /api/v1/diagnosis/log` | Crop diagnosis and expert ticket. |
 | `POST /api/v1/alerts/run-daily` | Alert runner. |
 | `POST /api/v1/dialogflow/webhook` | Dialogflow CX fulfillment. |
-| `POST /api/v1/whatsapp/webhook` | Authkey/generic WhatsApp webhook. |
 | `POST /api/v1/sms/webhook` | Authkey/generic SMS webhook. |
 | `POST /api/v1/calls/webhook` | Authkey/generic voice callback. |
 | `POST /api/v1/twilio/whatsapp` | Twilio WhatsApp webhook. |
@@ -518,7 +515,6 @@ Configure after deployment:
 - Twilio status callback: `https://SERVICE_URL/api/v1/twilio/status`
 - Twilio SMS: `https://SERVICE_URL/api/v1/twilio/sms`
 - Twilio Voice: `https://SERVICE_URL/api/v1/twilio/voice`
-- Authkey/generic WhatsApp: `https://SERVICE_URL/api/v1/whatsapp/webhook`
 - Authkey/generic SMS: `https://SERVICE_URL/api/v1/sms/webhook`
 - Authkey/generic voice callback: `https://SERVICE_URL/api/v1/calls/webhook`
 
@@ -535,6 +531,7 @@ Admin demo after deployment:
 Twilio WhatsApp setup:
 
 - Inbound webhook: set the Twilio WhatsApp sender webhook to `/api/v1/twilio/whatsapp`.
+- Outbound WhatsApp uses Twilio only. Authkey is not used for WhatsApp.
 - Status callback: use `/api/v1/twilio/status` for delivery, failed, read and related Twilio message events.
 - Public URL: set `TWILIO_PUBLIC_BASE_URL` to the ngrok/custom-domain/Cloud Run URL that Twilio calls. Cloud Run deploy sets this to the service URL when no custom callback URL is provided.
 - Webhook security: set `TWILIO_VALIDATE_WEBHOOKS=true` after `TWILIO_AUTH_TOKEN` is configured.
@@ -542,6 +539,12 @@ Twilio WhatsApp setup:
 - For proactive messages outside the WhatsApp customer-service window, set `TWILIO_CONTENT_SID` and optional JSON `TWILIO_CONTENT_VARIABLES`. Template variables can include `{message}`, `{media_url}`, and `{media_file_name}`.
 - Voice replies over WhatsApp need a public media URL. Configure `TWILIO_MEDIA_BUCKET` or `STORAGE_BUCKET`; optionally set `TWILIO_MEDIA_PUBLIC_BASE_URL` if the bucket path is public. Without cloud media, local/ngrok uses `/api/v1/twilio/media/{media_id}` as a short-lived fallback; production avoids the in-memory fallback when bucket publishing fails.
 - Live Twilio REST sends may return `queued`/`accepted` before final delivery. The backend treats those as accepted, not delivered; final delivery/read/failed states come through `/api/v1/twilio/status`.
+
+Authkey SMS/voice setup:
+
+- Outbound SMS text and outbound voice calls use Authkey only.
+- Configure `AUTHKEY_API_KEY`, `AUTHKEY_SMS_SENDER`, `AUTHKEY_TEST_COUNTRY_CODE`, and `AUTHKEY_SEND_ENABLED`.
+- WhatsApp template IDs are not required for Authkey because WhatsApp is handled by Twilio.
 
 Twilio credential/env values:
 

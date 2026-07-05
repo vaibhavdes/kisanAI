@@ -37,7 +37,7 @@ def health_check() -> dict:
                 and settings.dialogflow_agent_id
             ),
             "sms": authkey_ready or bool(settings.sms_provider_api_key),
-            "whatsappBusiness": authkey_ready or twilio_ready or bool(settings.whatsapp_business_token),
+            "whatsappBusiness": twilio_ready,
             "voiceCall": authkey_ready or bool(settings.voice_call_provider_api_key),
         },
     }

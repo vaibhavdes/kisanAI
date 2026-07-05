@@ -21,9 +21,7 @@ Backend:
 Dialogflow CX:
   Fulfillment webhook: ${SERVICE_URL}/api/v1/dialogflow/webhook
 
-Authkey / WhatsApp:
-  WhatsApp inbound:    ${SERVICE_URL}/api/v1/whatsapp/webhook
-  WhatsApp receipt:    ${SERVICE_URL}/api/v1/whatsapp/receipt
+Authkey SMS / Voice:
   SMS inbound:         ${SERVICE_URL}/api/v1/sms/webhook
   SMS receipt:         ${SERVICE_URL}/api/v1/sms/receipt
   Voice-call inbound:  ${SERVICE_URL}/api/v1/calls/webhook

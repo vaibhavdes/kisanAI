@@ -16,7 +16,6 @@ from app.services.channel_intent import detect_farmer_intent, is_crop_followup_t
 from app.services.conversation_store import ConversationStore
 from app.services.dialogflow_channel_service import DialogflowChannelService, DialogflowChannelUnavailable
 from app.services.expert_service import ExpertService
-from app.services.providers.authkey_client import AuthkeyClient
 from app.services.translation_service import TranslationProviderUnavailable, TranslationService
 from app.services.vision_ocr_service import VisionOcrService, VisionProviderUnavailable
 from app.services.voice_service import VoiceProviderUnavailable, VoiceService
@@ -439,21 +438,7 @@ class WhatsAppService:
         return settings.default_language
 
     def _send_whatsapp_reply(self, phone: str, reply: str, template_name: str | None) -> tuple[str | None, str]:
-        if not settings.authkey_api_key:
-            return None, "skipped_no_authkey"
-        if not settings.authkey_whatsapp_template_id:
-            return "authkey", "skipped_no_template"
-
-        result = AuthkeyClient(settings.authkey_api_key).send_whatsapp_template_get(
-            mobile=phone,
-            country_code=settings.authkey_test_country_code,
-            template_id=settings.authkey_whatsapp_template_id,
-            body_values={"message": reply, "template": template_name or "reply"},
-            dry_run=not settings.authkey_send_enabled,
-        )
-        if result.dry_run:
-            return result.provider, "dry_run"
-        return result.provider, "sent" if result.sent else "failed"
+        return "twilio", "reply_returned_to_twilio"
 
     def _log_farmer_message(
         self,

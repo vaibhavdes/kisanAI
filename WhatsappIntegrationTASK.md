@@ -1,6 +1,6 @@
 # Twilio WhatsApp Integration Tasks
 
-Goal: integrate WhatsApp completely through Twilio while preserving existing Authkey code and current frontend/backend behavior.
+Goal: integrate WhatsApp completely through Twilio while preserving Authkey for outbound SMS text and voice calls.
 
 ## Phase 0 - Tracking And Grounding
 
@@ -41,7 +41,7 @@ Goal: integrate WhatsApp completely through Twilio while preserving existing Aut
 - [x] Add Twilio outbound media sender for public media URLs.
 - [x] Add optional Twilio Content Template sender for messages outside the WhatsApp customer-service window.
 - [x] Wire Twilio branch into `AlertDeliveryService` when provider route is `twilio`.
-- [x] Keep Authkey branch unchanged.
+- [x] Keep Authkey branch for SMS and voice-call delivery only.
 - [x] Support dry-run mode unless `TWILIO_ENABLE_LIVE_SEND=true`.
 
 ## Phase 5 - Twilio Status Callbacks And Receipts
@@ -84,7 +84,7 @@ Goal: integrate WhatsApp completely through Twilio while preserving existing Aut
 - [x] Recheck frontend chat payload and response compatibility.
 - [x] Fix stale `sms_voice` provider-route compatibility for older stored route documents.
 - [x] Fix provider PATCH semantics so explicit `secondary: null` clears a fallback route.
-- [x] Fix WhatsApp provider fallback so configured secondary providers are actually attempted after skipped/failed primary sends.
+- [x] Fix provider ownership so WhatsApp is Twilio-only and SMS/voice is Authkey-only.
 - [x] Harden Twilio signature validation behind Cloud Run/custom/public base URLs.
 - [x] Harden malformed media metadata and invalid base64 handling for voice/image inputs.
 - [x] Prevent production generated-audio replies from falling back to per-instance memory when bucket publishing fails.

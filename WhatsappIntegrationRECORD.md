@@ -11,7 +11,7 @@ This file records every code, logic, test, and documentation change made for the
 
 ### Logic Decisions
 
-- Twilio WhatsApp integration will be added without removing or rewriting Authkey logic.
+- Twilio WhatsApp integration will be added without removing Authkey SMS and voice-call logic.
 - Existing `WhatsAppService` remains the shared business logic for farmer identity, language, context, media diagnosis, voice STT/TTS, and conversation logging.
 - Twilio-specific behavior will live in a provider adapter/service layer and in Twilio endpoints.
 
@@ -39,7 +39,7 @@ This file records every code, logic, test, and documentation change made for the
 - `backend/app/services/twilio_whatsapp_service.py`: Added `TwilioWhatsAppService` with request validation, Twilio inbound form normalization, TwiML reply generation, response-audio media URL scaffolding, outbound message payload construction, dry-run results, live-send HTTP POST support, callback URL helpers, and WhatsApp phone normalization.
 - `backend/app/api/v1/endpoints/twilio.py`: Refactored `/api/v1/twilio/whatsapp` to pass normalized payloads to `WhatsAppService` and return TwiML through the Twilio adapter.
 - `backend/app/api/v1/endpoints/twilio.py`: Added `/api/v1/twilio/status` and `/api/v1/twilio/media/{media_id}` scaffolding.
-- `backend/app/services/alert_delivery_service.py`: Added a Twilio WhatsApp branch when the WhatsApp provider route is `twilio`.
+- `backend/app/services/alert_delivery_service.py`: Added the Twilio WhatsApp branch for outbound WhatsApp alerts.
 - `backend/app/services/channel_intent.py`: Routed document media to `document_message` instead of crop diagnosis.
 - `backend/app/models/schemas.py`: Added `VoiceIntakeRequest.audio_mime_type` so inbound audio MIME type can flow into STT handling.
 - `backend/app/services/voice_service.py` and `backend/app/services/vision_ocr_service.py`: Added Twilio basic auth support for `api.twilio.com` media downloads.
@@ -65,7 +65,7 @@ This file records every code, logic, test, and documentation change made for the
 - `backend/app/api/v1/endpoints/twilio.py`: Refactored `/api/v1/twilio/whatsapp` to use the Twilio adapter and added `/api/v1/twilio/status` plus `/api/v1/twilio/media/{media_id}`.
 - `backend/app/api/v1/endpoints/twilio.py`: Added Twilio signature validation to `/api/v1/twilio/status` when `TWILIO_VALIDATE_WEBHOOKS=true`.
 - `backend/app/services/twilio_whatsapp_service.py`: Added durable response-audio publishing through `TWILIO_MEDIA_BUCKET` or `STORAGE_BUCKET`, optional `TWILIO_MEDIA_PUBLIC_BASE_URL`, signed URL fallback, and short-lived in-memory local fallback.
-- `backend/app/services/alert_delivery_service.py`: Wired Twilio as an additive WhatsApp provider branch while preserving the Authkey branch.
+- `backend/app/services/alert_delivery_service.py`: Wired Twilio as the WhatsApp provider while preserving Authkey for SMS and voice-call channels.
 - `backend/app/models/schemas.py`, `backend/app/services/voice_service.py`, and `backend/app/services/whatsapp_service.py`: Preserved inbound audio MIME type so Twilio voice-note media can be passed correctly into STT.
 - `backend/app/services/voice_service.py` and `backend/app/services/vision_ocr_service.py`: Added Twilio basic auth for `api.twilio.com` media downloads and converted failed HTTP media downloads into controlled provider-unavailable errors.
 - `backend/app/services/channel_intent.py`, `backend/app/services/whatsapp_service.py`, and `backend/app/utils/language.py`: Added a dedicated `document_message` path so document attachments receive a clear response instead of being treated as crop photos.
@@ -76,7 +76,7 @@ This file records every code, logic, test, and documentation change made for the
 
 ### Logic Decisions
 
-- Authkey remains the default WhatsApp provider; Twilio is activated through the existing provider route config.
+- Twilio is the WhatsApp provider. Authkey is reserved for outbound SMS text and voice calls.
 - Twilio live outbound sending remains disabled unless `TWILIO_ENABLE_LIVE_SEND=true`.
 - Twilio template sends use `TWILIO_CONTENT_SID` and optional JSON `TWILIO_CONTENT_VARIABLES`; free-form text/media sends remain available for in-session or dry-run flows.
 - Generated WhatsApp voice replies prefer durable public media publishing and only use the app-served in-memory media URL as a local development fallback.
@@ -106,7 +106,7 @@ This file records every code, logic, test, and documentation change made for the
 - `backend/app/services/provider_config_service.py`: Restricted `sms_voice` to Authkey only, normalized stale stored `sms_voice` routes that still had Twilio fallback, and fixed PATCH semantics so explicit `secondary: null`, `allow_fallback`, `enabled`, and `note` updates are honored.
 - `backend/app/repositories/store.py`: Updated default `sms_voice` route to Authkey-only with fallback disabled.
 - `backend/app/api/v1/endpoints/admin_ui.py`: Removed Twilio from the `sms_voice` provider choices and disabled fallback controls for `sms_voice`.
-- `backend/app/services/alert_delivery_service.py`: Implemented real WhatsApp provider fallback across primary/secondary routes, added Twilio Content Template variables for `{message}`, `{media_url}`, and `{media_file_name}`, and separated `accepted` Twilio statuses from final sent/delivered status.
+- `backend/app/services/alert_delivery_service.py`: Added Twilio Content Template variables for `{message}`, `{media_url}`, and `{media_file_name}`, and separated `accepted` Twilio statuses from final sent/delivered status.
 - `backend/app/services/twilio_whatsapp_service.py`: Added canonical public-base URL signature validation, strict base64 decoding, malformed `NumMedia` handling, normalized audio extensions, content-variable metadata in dry runs, queued/accepted live-send semantics, and production-safe generated-audio behavior when bucket publishing fails.
 - `backend/app/api/v1/endpoints/twilio.py`: Applied Twilio signature validation consistently to WhatsApp, SMS, voice, and status callback endpoints.
 - `backend/app/services/voice_service.py` and `backend/app/services/vision_ocr_service.py`: Converted invalid base64 media payloads into service-level unavailable errors instead of leaking decoder exceptions.
@@ -216,3 +216,13 @@ This file records every code, logic, test, and documentation change made for the
 - Backend identified/created the farmer for the verified phone and saved farm coordinates.
 - Saved farm coordinates were verified; exact test coordinates were redacted before push.
 - Backend generated a WhatsApp reply and Twilio fetched the generated audio reply media from `/api/v1/twilio/media/{media_id}` with HTTP 200.
+
+## 2026-07-05 - Provider Ownership Correction
+
+- WhatsApp inbound and outbound is Twilio-only.
+- Outbound SMS text and outbound voice calls are Authkey-only.
+- `backend/app/services/provider_config_service.py`: Restricted WhatsApp routes to Twilio only and normalizes stale Authkey WhatsApp route documents back to Twilio with fallback disabled.
+- `backend/app/services/alert_delivery_service.py`: Removed Authkey WhatsApp delivery from proactive alert delivery.
+- `backend/app/services/whatsapp_service.py`: Removed Authkey template sending from generic WhatsApp replies; Twilio webhooks return TwiML directly.
+- `backend/app/api/v1/endpoints/health.py`: Counts only Twilio readiness for `whatsappBusiness`.
+- `backend/scripts/print_webhook_urls.sh`, `backend/scripts/deploy_cloud_run.sh`, `.env.example`, smoke tests, and README now document Authkey only for SMS/voice.
