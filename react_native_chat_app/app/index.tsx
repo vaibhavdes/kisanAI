@@ -834,6 +834,14 @@ function MessageBubble({
           </Text>
         ) : null}
 
+        {!message.mine && message.dataSources && Object.keys(message.dataSources).length ? (
+          <MetaLine label="Data" value={compactMetadata(message.dataSources)} />
+        ) : null}
+
+        {!message.mine && message.serviceWarnings?.length ? (
+          <MetaLine label="Issue" value={message.serviceWarnings.join(" · ")} danger />
+        ) : null}
+
         <View style={{ flexDirection: "row", alignSelf: "flex-end", alignItems: "center", gap: 4 }}>
           {message.intent ? (
             <Text selectable style={{ fontSize: 10.5, color: "#687568" }}>
@@ -871,7 +879,41 @@ function responseToMessage(response: ChatResponse, copy: ReturnType<typeof uiCop
     intent: response.intent,
     status: "sent",
     time: currentTime(),
+    dataSources: cleanMetadata(response.data_sources),
+    serviceWarnings: response.service_warnings || [],
+    storedContext: cleanMetadata(response.stored_context),
   };
+}
+
+function MetaLine({ label, value, danger = false }: { label: string; value: string; danger?: boolean }) {
+  return (
+    <View
+      style={{
+        borderTopWidth: 1,
+        borderTopColor: danger ? "#f0c8c8" : "#dde8dd",
+        paddingTop: 5,
+        marginTop: 1,
+      }}
+    >
+      <Text selectable style={{ color: danger ? "#9f1d1d" : "#536053", fontSize: 10.5, lineHeight: 15 }}>
+        {label}: {value}
+      </Text>
+    </View>
+  );
+}
+
+function cleanMetadata(metadata?: Record<string, string | number | boolean | null | undefined>) {
+  if (!metadata) return undefined;
+  const entries = Object.entries(metadata).filter(([, value]) => value !== null && value !== undefined && value !== "");
+  return entries.length ? Object.fromEntries(entries) : undefined;
+}
+
+function compactMetadata(metadata: Record<string, string | number | boolean | null | undefined>) {
+  return Object.entries(metadata)
+    .filter(([, value]) => value !== null && value !== undefined && value !== "")
+    .slice(0, 5)
+    .map(([key, value]) => `${key}: ${String(value)}`)
+    .join(" · ");
 }
 
 async function uriToBase64(uri: string) {

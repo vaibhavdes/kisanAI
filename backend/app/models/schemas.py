@@ -113,8 +113,12 @@ class FarmerCreate(BaseModel):
     phone: str
     language: str = "hi-IN"
     village: str
+    taluka: str | None = None
     district: str
     state: str
+    pincode: str | None = None
+    active_crop: str | None = None
+    water_availability: WaterAvailability | None = None
     farm: FarmProfile
 
 
@@ -129,6 +133,7 @@ class FarmerIdentifyRequest(BaseModel):
     language: str | None = None
     name: str | None = None
     village: str | None = None
+    taluka: str | None = None
     district: str | None = None
     state: str | None = None
     pincode: str | None = None
@@ -651,6 +656,9 @@ class WhatsAppWebhookResponse(BaseModel):
     outbound_provider: str | None = None
     delivery_status: str = "not_sent"
     missing_fields: list[str] = Field(default_factory=list)
+    data_sources: dict[str, str | float | int | bool | None] = Field(default_factory=dict)
+    service_warnings: list[str] = Field(default_factory=list)
+    stored_context: dict[str, str | float | int | bool | None] = Field(default_factory=dict)
 
 
 class VoiceCallWebhookRequest(BaseModel):

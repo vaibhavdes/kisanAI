@@ -277,7 +277,7 @@ def test_hindi_chat_flow_stays_friendly_and_contextual() -> None:
     )
     assert soil_response.status_code == 200
     assert soil_response.json()["intent"] == "crop_recommendation"
-    assert "फसल जानकारी" in soil_response.json()["reply"]
+    assert "गांव/पिनकोड" in soil_response.json()["reply"]
 
     jowar_response = client.post(
         "/api/v1/chat/message",
@@ -285,7 +285,7 @@ def test_hindi_chat_flow_stays_friendly_and_contextual() -> None:
     )
     assert jowar_response.status_code == 200
     assert jowar_response.json()["intent"] == "crop_recommendation"
-    assert "फसल जानकारी" in jowar_response.json()["reply"]
+    assert "गांव/पिनकोड" in jowar_response.json()["reply"]
 
     water_response = client.post(
         "/api/v1/chat/message",
@@ -293,8 +293,68 @@ def test_hindi_chat_flow_stays_friendly_and_contextual() -> None:
     )
     assert water_response.status_code == 200
     assert water_response.json()["intent"] == "crop_recommendation"
-    assert "फसल जानकारी" in water_response.json()["reply"]
+    assert "गांव/पिनकोड" in water_response.json()["reply"]
     assert "en-IN" not in water_response.json()["reply"]
+
+
+def test_whatsapp_context_reuses_saved_location_for_weather_and_crop(monkeypatch) -> None:
+    class Weather:
+        source = ProviderName.open_meteo
+        fallback_used = True
+        provider_statuses = []
+        current_temperature_c = 31.2
+        current_humidity_percent = 72
+        daily = [
+            type("Day", (), {"rainfall_mm": 1.0})(),
+            type("Day", (), {"rainfall_mm": 2.5})(),
+            type("Day", (), {"rainfall_mm": 0.0})(),
+            type("Day", (), {"rainfall_mm": 4.0})(),
+        ]
+
+    def fake_weather(self, payload):
+        return Weather()
+
+    monkeypatch.setattr("app.services.weather_context_service.WeatherContextService.get_context", fake_weather)
+
+    phone = "+91 90000 33333"
+    first_response = client.post("/api/v1/chat/message", json={"from_phone": phone, "text": "Hi", "language": "hi-IN"})
+    assert first_response.status_code == 200
+    assert "नाम" in first_response.json()["reply"]
+
+    location_response = client.post(
+        "/api/v1/chat/message",
+        json={
+            "from_phone": phone,
+            "latitude": 19.0948,
+            "longitude": 74.7480,
+            "location_label": "Ahilyanagar farm",
+            "language": "hi-IN",
+        },
+    )
+    assert location_response.status_code == 200
+    assert location_response.json()["intent"] == "location_update"
+
+    weather_response = client.post("/api/v1/chat/message", json={"from_phone": phone, "text": "Weather", "language": "hi-IN"})
+    assert weather_response.status_code == 200
+    assert weather_response.json()["intent"] == "weather_query"
+    assert "बारिश का अनुमान" in weather_response.json()["reply"]
+    assert weather_response.json()["data_sources"]["weather"] == "open_meteo"
+
+    pincode_response = client.post("/api/v1/chat/message", json={"from_phone": phone, "text": "413713", "language": "hi-IN"})
+    assert pincode_response.status_code == 200
+    assert pincode_response.json()["intent"] == "weather_query"
+    assert "बारिश का अनुमान" in pincode_response.json()["reply"]
+
+
+def test_crop_recommend_query_is_not_treated_as_crop_detail() -> None:
+    response = client.post(
+        "/api/v1/chat/message",
+        json={"from_phone": "+91 90000 44444", "text": "Suggest me a crop", "language": "en-IN"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["intent"] == "crop_recommendation"
+    assert "I noted this crop detail" not in response.json()["reply"]
 
 
 def test_dialogflow_stale_keyword_menu_is_ignored(monkeypatch) -> None:
@@ -489,7 +549,7 @@ def test_twilio_whatsapp_text_location_and_media_webhooks() -> None:
     )
     assert text_response.status_code == 200
     assert text_response.headers["content-type"].startswith("text/xml")
-    assert "soil moisture" in text_response.text
+    assert "farm location or pincode" in text_response.text
 
     location_response = client.post(
         "/api/v1/twilio/whatsapp",

@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     imd_api_base_url: str | None = None
     imd_api_key: str | None = None
     open_meteo_base_url: str = "https://api.open-meteo.com/v1/forecast"
+    maps_api_key: str | None = None
+    geocoding_request_timeout_seconds: int = 15
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-2.5-flash"
     vertex_ai_model: str = "gemini-2.5-flash"

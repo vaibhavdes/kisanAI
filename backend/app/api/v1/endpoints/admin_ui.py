@@ -236,6 +236,16 @@ ADMIN_HTML = """<!doctype html>
     </section>
     <section>
       <div class="section-head">
+        <h2>Registered Farmers</h2>
+        <button class="secondary" id="refreshFarmersBtn">Refresh Farmers</button>
+      </div>
+      <div class="content">
+        <div class="cards" id="farmers"></div>
+        <pre id="farmerDetail">Select a farmer to view stored context.</pre>
+      </div>
+    </section>
+    <section>
+      <div class="section-head">
         <h2>Expert Tickets</h2>
         <button class="secondary" id="refreshTicketsBtn">Refresh Tickets</button>
       </div>
@@ -322,6 +332,37 @@ ADMIN_HTML = """<!doctype html>
       if (!farmers.length) {
         select.innerHTML = '<option value="">No farmers yet</option>';
       }
+      const container = document.getElementById('farmers');
+      if (!farmers.length) {
+        container.innerHTML = '<div class="status">No registered farmers yet.</div>';
+        return;
+      }
+      container.innerHTML = farmers.map(farmer => `
+        <div class="card">
+          <div><strong>${farmer.name}</strong> · ${farmer.phone}</div>
+          <div>${farmer.village || '-'}, ${farmer.taluka || '-'}, ${farmer.district || '-'}, ${farmer.state || '-'} ${farmer.pincode || ''}</div>
+          <div class="mono">Language: ${farmer.language} · Crop: ${farmer.active_crop || '-'} · Water: ${farmer.water_availability || '-'}</div>
+          <div class="mono">Lat/Lng: ${farmer.farm?.latitude ?? '-'}, ${farmer.farm?.longitude ?? '-'} · Soil: ${farmer.farm?.soil_type || '-'}</div>
+          <button class="secondary" data-action="viewFarmer" data-farmer="${farmer.id}">View Context</button>
+        </div>
+      `).join('');
+    }
+
+    async function viewFarmer(farmerId) {
+      const [farmersResponse, messagesResponse, ticketsResponse] = await Promise.all([
+        fetch('/api/v1/farmers?limit=100'),
+        fetch(`/api/v1/conversations/${farmerId}?limit=12`),
+        fetch(`/api/v1/expert/tickets/${farmerId}`)
+      ]);
+      const farmers = await farmersResponse.json();
+      const farmer = farmers.find(item => item.id === farmerId);
+      const messages = await messagesResponse.json();
+      const tickets = await ticketsResponse.json();
+      document.getElementById('farmerDetail').textContent = JSON.stringify({
+        farmer,
+        openTickets: tickets,
+        recentMessages: messages
+      }, null, 2);
     }
 
     async function createDemoFarmer() {
@@ -488,12 +529,18 @@ ADMIN_HTML = """<!doctype html>
     document.getElementById('saveBtn').addEventListener('click', saveRoutes);
     document.getElementById('refreshBtn').addEventListener('click', refreshAll);
     document.getElementById('refreshTicketsBtn').addEventListener('click', () => loadTickets().catch(error => showBanner(error.message, true)));
+    document.getElementById('refreshFarmersBtn').addEventListener('click', () => loadFarmers().catch(error => showBanner(error.message, true)));
     document.getElementById('seedFarmerBtn').addEventListener('click', () => createDemoFarmer().catch(error => showBanner(error.message, true)));
     document.getElementById('scenarioSelect').addEventListener('change', applyScenario);
     document.getElementById('runAlertBtn').addEventListener('click', () => runAlertSimulation().catch(error => showBanner(error.message, true)));
     document.getElementById('tickets').addEventListener('click', event => {
       if (event.target && event.target.dataset.action === 'updateTicket') {
         updateTicket(event.target.closest('.card')).catch(error => showBanner(error.message, true));
+      }
+    });
+    document.getElementById('farmers').addEventListener('click', event => {
+      if (event.target && event.target.dataset.action === 'viewFarmer') {
+        viewFarmer(event.target.dataset.farmer).catch(error => showBanner(error.message, true));
       }
     });
     refreshAll().catch(error => showBanner(error.message, true));

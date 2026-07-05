@@ -29,6 +29,8 @@ class AppStore(Protocol):
 
     def get_farmer(self, farmer_id: str) -> FarmerResponse | None: ...
 
+    def get_farmer_by_phone(self, phone: str) -> FarmerResponse | None: ...
+
     def save_farmer(self, farmer: FarmerResponse) -> FarmerResponse: ...
 
     def list_farmers(self, limit: int = 100) -> list[FarmerResponse]: ...
@@ -90,8 +92,10 @@ class LocalStore:
                 name=payload.name or "Farmer",
                 language=payload.language or settings.default_language,
                 village=payload.village or payload.pincode or "unknown",
+                taluka=payload.taluka,
                 district=payload.district or "unknown",
                 state=payload.state or "unknown",
+                pincode=payload.pincode,
                 farm=FarmProfile(latitude=payload.latitude, longitude=payload.longitude),
             )
         else:
@@ -104,6 +108,10 @@ class LocalStore:
 
     def get_farmer(self, farmer_id: str) -> FarmerResponse | None:
         return self.farmers.get(farmer_id)
+
+    def get_farmer_by_phone(self, phone: str) -> FarmerResponse | None:
+        farmer_id = self.farmer_ids_by_phone.get(normalize_phone(phone))
+        return self.get_farmer(farmer_id) if farmer_id else None
 
     def save_farmer(self, farmer: FarmerResponse) -> FarmerResponse:
         self.farmers[farmer.id] = farmer
@@ -169,7 +177,7 @@ class LocalStore:
 
     def _merge_farmer(self, farmer: FarmerResponse, payload: FarmerIdentifyRequest) -> FarmerResponse:
         data = farmer.model_dump()
-        for field in ["name", "language", "village", "district", "state"]:
+        for field in ["name", "language", "village", "taluka", "district", "state", "pincode"]:
             value = getattr(payload, field)
             if value:
                 data[field] = value
@@ -215,8 +223,10 @@ class FirestoreStore:
                 name=payload.name or "Farmer",
                 language=payload.language or settings.default_language,
                 village=payload.village or payload.pincode or "unknown",
+                taluka=payload.taluka,
                 district=payload.district or "unknown",
                 state=payload.state or "unknown",
+                pincode=payload.pincode,
                 farm=FarmProfile(latitude=payload.latitude, longitude=payload.longitude),
             )
         else:
@@ -228,8 +238,10 @@ class FirestoreStore:
                     name=payload.name or "Farmer",
                     language=payload.language or settings.default_language,
                     village=payload.village or payload.pincode or "unknown",
+                    taluka=payload.taluka,
                     district=payload.district or "unknown",
                     state=payload.state or "unknown",
+                    pincode=payload.pincode,
                     farm=FarmProfile(latitude=payload.latitude, longitude=payload.longitude),
                 )
             else:
@@ -250,6 +262,14 @@ class FirestoreStore:
     def get_farmer(self, farmer_id: str) -> FarmerResponse | None:
         doc = self.client.collection("farmers").document(farmer_id).get()
         return FarmerResponse(**doc.to_dict()) if doc.exists else None
+
+    def get_farmer_by_phone(self, phone: str) -> FarmerResponse | None:
+        normalized_phone = normalize_phone(phone)
+        identity_doc = self.client.collection("farmer_channel_identities").document(normalized_phone).get()
+        if not identity_doc.exists:
+            return None
+        farmer_id = identity_doc.to_dict().get("farmer_id")
+        return self.get_farmer(farmer_id) if farmer_id else None
 
     def save_farmer(self, farmer: FarmerResponse) -> FarmerResponse:
         normalized_phone = normalize_phone(farmer.phone)

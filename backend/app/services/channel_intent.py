@@ -160,6 +160,9 @@ DIAGNOSIS_TERMS = [
 ]
 
 CROP_RECOMMENDATION_TERMS = [
+    "suggest crop",
+    "recommend crop",
+    "crop recommendation",
     "crop",
     "sow",
     "plant",
@@ -241,6 +244,8 @@ YES_NO_TERMS = ["yes", "no", "haan", "ha", "nahi", "हो", "नाही", "�
 def is_crop_followup_text(text: str | None) -> bool:
     normalized = (text or "").strip().lower()
     if not normalized:
+        return False
+    if any(term in normalized for term in ["suggest", "recommend", "which crop", "what crop", "कौन सी फसल", "कोणते पीक"]):
         return False
     return _has_any(normalized, CROP_FOLLOWUP_TERMS + CROP_RECOMMENDATION_TERMS)
 

@@ -9,6 +9,9 @@ export type ChatMessage = {
   intent?: string;
   status?: "sending" | "sent" | "failed";
   time?: string;
+  dataSources?: Record<string, string | number | boolean | null | undefined>;
+  serviceWarnings?: string[];
+  storedContext?: Record<string, string | number | boolean | null | undefined>;
 };
 
 export type ChatPayload = {
@@ -37,4 +40,7 @@ export type ChatResponse = {
   response_audio_content_type?: string;
   delivery_status?: string;
   missing_fields?: string[];
+  data_sources?: Record<string, string | number | boolean | null | undefined>;
+  service_warnings?: string[];
+  stored_context?: Record<string, string | number | boolean | null | undefined>;
 };
