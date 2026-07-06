@@ -323,7 +323,7 @@ class TwilioWhatsAppService:
         except (BinasciiError, ValueError):
             return None
         content_type = self._clean_audio_content_type(response.response_audio_content_type)
-        public_url = self._publish_response_media(content, content_type)
+        public_url = self._publish_response_media(content, content_type, base_url=base_url)
         if public_url:
             return public_url
         if settings.environment == "production" and (settings.twilio_media_bucket or settings.storage_bucket):
@@ -342,7 +342,7 @@ class TwilioWhatsAppService:
             return "audio/wav"
         return normalized or "audio/mpeg"
 
-    def _publish_response_media(self, content: bytes, content_type: str) -> str | None:
+    def _publish_response_media(self, content: bytes, content_type: str, *, base_url: str) -> str | None:
         bucket_name = settings.twilio_media_bucket or settings.storage_bucket
         if not bucket_name:
             return None
@@ -356,6 +356,8 @@ class TwilioWhatsAppService:
             blob.upload_from_string(content, content_type=content_type)
             if settings.twilio_media_public_base_url:
                 return f"{settings.twilio_media_public_base_url.rstrip('/')}/{quote(blob_name, safe='/')}"
+            if base_url:
+                return f"{base_url.rstrip('/')}/api/v1/twilio/media/gcs/{quote(blob_name, safe='/')}"
             return blob.generate_signed_url(
                 expiration=timedelta(minutes=max(settings.twilio_media_signed_url_minutes, 1)),
                 method="GET",

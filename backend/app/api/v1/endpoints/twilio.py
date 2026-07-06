@@ -4,6 +4,7 @@ from urllib.parse import parse_qs
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 
+from app.core.config import settings
 from app.models.schemas import (
     ChannelReceiptRequest,
     ChannelReceiptResponse,
@@ -111,6 +112,31 @@ def twilio_media(media_id: str) -> Response:
         content=media.content,
         media_type=media.content_type,
         headers={"Content-Disposition": f'inline; filename="{media.filename}"'},
+    )
+
+
+@router.get("/media/gcs/{blob_path:path}")
+def twilio_gcs_media(blob_path: str) -> Response:
+    bucket_name = settings.twilio_media_bucket or settings.storage_bucket
+    if not bucket_name:
+        raise HTTPException(status_code=404, detail="Media bucket not configured")
+    try:
+        from google.cloud import storage
+
+        blob = storage.Client(project=settings.google_cloud_project).bucket(bucket_name).blob(blob_path)
+        if not blob.exists():
+            raise HTTPException(status_code=404, detail="Media not found")
+        content = blob.download_as_bytes()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Media fetch failed: {exc}") from exc
+    content_type = blob.content_type or "application/octet-stream"
+    filename = blob_path.rsplit("/", 1)[-1] or "reply.bin"
+    return Response(
+        content=content,
+        media_type=content_type,
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
     )
 
 

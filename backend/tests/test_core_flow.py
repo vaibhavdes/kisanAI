@@ -1181,7 +1181,7 @@ def test_twilio_response_audio_skips_memory_media_in_production_when_bucket_publ
     monkeypatch.setattr(settings, "environment", "production")
     monkeypatch.setattr(settings, "twilio_media_bucket", "reply-bucket")
     monkeypatch.setattr(settings, "storage_bucket", None)
-    monkeypatch.setattr(TwilioWhatsAppService, "_publish_response_media", lambda self, content, content_type: None)
+    monkeypatch.setattr(TwilioWhatsAppService, "_publish_response_media", lambda self, content, content_type, base_url: None)
 
     xml = TwilioWhatsAppService().twiml_response(
         WhatsAppWebhookResponse(
@@ -1195,6 +1195,31 @@ def test_twilio_response_audio_skips_memory_media_in_production_when_bucket_publ
     )
     assert "Audio reply" in xml
     assert "<Media>" not in xml
+
+
+def test_twilio_response_audio_uses_published_cloud_run_media_url_in_production(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "environment", "production")
+    monkeypatch.setattr(settings, "twilio_media_bucket", "reply-bucket")
+    monkeypatch.setattr(settings, "storage_bucket", None)
+    monkeypatch.setattr(
+        TwilioWhatsAppService,
+        "_publish_response_media",
+        lambda self, content, content_type, base_url: f"{base_url.rstrip('/')}/api/v1/twilio/media/gcs/twilio/replies/reply.mp3",
+    )
+
+    xml = TwilioWhatsAppService().twiml_response(
+        WhatsAppWebhookResponse(
+            intent="weather_query",
+            reply="Text reply",
+            response_audio_base64=base64.b64encode(b"reply audio").decode("ascii"),
+            response_audio_content_type="audio/mpeg",
+        ),
+        base_url="https://kisan.example.com",
+        status_callback_url=None,
+    )
+
+    assert "Text reply" in xml
+    assert "<Media>https://kisan.example.com/api/v1/twilio/media/gcs/twilio/replies/reply.mp3</Media>" in xml
 
 
 def test_twilio_status_callback_saves_whatsapp_receipt() -> None:
