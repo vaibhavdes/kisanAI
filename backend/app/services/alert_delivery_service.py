@@ -1,10 +1,12 @@
 import json
+from datetime import UTC, datetime, timedelta
 
 from app.core.config import settings
 from app.models.schemas import (
     AlertDeliveryRequest,
     AlertDeliveryResponse,
     ChannelDeliveryResult,
+    ConversationRole,
     FarmerResponse,
     ProviderFeature,
     ProviderName,
@@ -27,25 +29,34 @@ class AlertDeliveryService:
 
     def _deliver_channel(self, farmer: FarmerResponse, channel: str, payload: AlertDeliveryRequest) -> ChannelDeliveryResult:
         if channel == "whatsapp":
-            return self._send_whatsapp(farmer.phone, payload)
+            return self._send_whatsapp(farmer, payload)
         if channel == "sms":
             return self._send_sms(farmer.phone, payload.message)
         if channel == "voice_call":
             return self._send_voice_call(farmer.phone, payload.message)
         return ChannelDeliveryResult(channel=channel, status="unsupported_channel")
 
-    def _send_whatsapp(self, phone: str, payload: AlertDeliveryRequest) -> ChannelDeliveryResult:
+    def _send_whatsapp(self, farmer: FarmerResponse, payload: AlertDeliveryRequest) -> ChannelDeliveryResult:
         route = store.get_provider_route(ProviderFeature.whatsapp)
         if not route.enabled:
             return ChannelDeliveryResult(channel="whatsapp", provider=str(route.primary), status="provider_disabled")
         if route.primary != ProviderName.twilio:
             return ChannelDeliveryResult(channel="whatsapp", provider=str(route.primary), status="unsupported_provider")
-        return self._send_twilio_whatsapp(phone, payload)
+        return self._send_twilio_whatsapp(farmer, payload)
 
-    def _send_twilio_whatsapp(self, phone: str, payload: AlertDeliveryRequest) -> ChannelDeliveryResult:
+    def _send_twilio_whatsapp(self, farmer: FarmerResponse, payload: AlertDeliveryRequest) -> ChannelDeliveryResult:
         content_sid = settings.twilio_content_sid
+        if payload.requires_whatsapp_template and not content_sid and not self._has_active_whatsapp_session(farmer.id):
+            return ChannelDeliveryResult(
+                channel="whatsapp",
+                provider="twilio",
+                operation="send_twilio_whatsapp_template",
+                status="skipped_no_twilio_template",
+                retryable=False,
+                metadata={"templateRequired": True},
+            )
         return TwilioWhatsAppService().send_whatsapp(
-            to_phone=phone,
+            to_phone=farmer.phone,
             body=payload.message,
             media_url=payload.media_url if not content_sid else None,
             content_sid=content_sid,
@@ -59,6 +70,15 @@ class AlertDeliveryService:
                 else None
             ),
             dry_run=not settings.twilio_enable_live_send,
+        )
+
+    def _has_active_whatsapp_session(self, farmer_id: str) -> bool:
+        cutoff = datetime.now(UTC) - timedelta(hours=24)
+        return any(
+            message.role == ConversationRole.farmer
+            and message.channel == "whatsapp"
+            and message.created_at >= cutoff
+            for message in store.list_conversation_messages(farmer_id, limit=50)
         )
 
     def _send_sms(self, phone: str, message: str) -> ChannelDeliveryResult:

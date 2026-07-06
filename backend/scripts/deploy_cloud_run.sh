@@ -15,6 +15,7 @@ GEMINI_MODEL="${GEMINI_MODEL:-gemini-2.5-flash}"
 VERTEX_AI_MODEL="${VERTEX_AI_MODEL:-gemini-2.5-flash}"
 OPEN_METEO_BASE_URL="${OPEN_METEO_BASE_URL:-https://api.open-meteo.com/v1/forecast}"
 RYTHU_SEVA_DEFAULT_CENTER="${RYTHU_SEVA_DEFAULT_CENTER:-RSK Demo Center}"
+CLOUD_RUN_MIN_INSTANCES="${CLOUD_RUN_MIN_INSTANCES:-1}"
 SOURCE_DIR="${SOURCE_DIR:-backend}"
 if [[ ! -d "${SOURCE_DIR}" ]]; then
   SOURCE_DIR="."
@@ -100,6 +101,7 @@ done
 ENV_VARS=$(
   IFS=,
   echo "ENVIRONMENT=production,\
+APP_NAME=${APP_NAME:-Kisan Alert},\
 DATA_STORE_PROVIDER=firestore,\
 ENABLE_GOOGLE_INTEGRATIONS=true,\
 GOOGLE_CLOUD_PROJECT=${PROJECT_ID},\
@@ -168,6 +170,7 @@ gcloud run deploy "${SERVICE_NAME}" \
   --region "${REGION}" \
   --service-account "${SERVICE_ACCOUNT_EMAIL}" \
   --allow-unauthenticated \
+  --min-instances "${CLOUD_RUN_MIN_INSTANCES}" \
   --set-env-vars "${ENV_VARS}" \
   "${SECRET_ARGS[@]}"
 

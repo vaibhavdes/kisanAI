@@ -63,10 +63,12 @@ class WhatsAppService:
 
         transcript = self._transcribe_voice(payload, response_language)
         text = transcript or payload.text
+        media_uri_for_intent = None if transcript else payload.media_uri
+        media_type_for_intent = None if transcript else payload.media_type
         intent = detect_farmer_intent(
             text,
-            payload.media_uri,
-            media_type=payload.media_type,
+            media_uri_for_intent,
+            media_type=media_type_for_intent,
             has_location=payload.latitude is not None and payload.longitude is not None,
         )
         intent = self._intent_with_context(farmer.id, text, intent)
@@ -109,6 +111,7 @@ class WhatsAppService:
         response.detected_language = response_language
         response.missing_fields = identity.missing_fields
         self._naturalize_response(response, farmer.id, response_language, text or "", channel)
+        self._attach_day_start_bulletin(response, farmer, response_language, channel)
 
         self._attach_audio(farmer.id, response, response_language)
 
@@ -209,6 +212,9 @@ class WhatsAppService:
 
         if intent == "weather_query":
             return self._weather_response(farmer, language, transcript)
+
+        if intent == "satellite_advisory":
+            return self._satellite_response(farmer, language, transcript)
 
         if intent == "crop_diagnosis":
             if payload.media_uri or payload.media_base64:
@@ -388,6 +394,84 @@ class WhatsAppService:
                 service_warnings=[str(exc)],
                 stored_context=self._stored_context(farmer),
             )
+
+    def _satellite_response(
+        self,
+        farmer: FarmerResponse,
+        language: str,
+        transcript: str | None,
+    ) -> WhatsAppWebhookResponse:
+        if farmer.farm.latitude is None or farmer.farm.longitude is None:
+            return WhatsAppWebhookResponse(
+                intent="satellite_advisory",
+                reply=self._localized_location_needed(language, "whatsapp"),
+                template_name="satellite_need_location",
+                transcript=transcript,
+                stored_context=self._stored_context(farmer),
+            )
+        try:
+            signal = WeatherService()._satellite_signal(farmer)
+        except Exception as exc:
+            return WhatsAppWebhookResponse(
+                intent="satellite_advisory",
+                reply=phrase("weather_failed", language, location=self._location_label(farmer)),
+                template_name="satellite_failed",
+                transcript=transcript,
+                service_warnings=[f"Earth Engine satellite signal failed: {exc}"],
+                stored_context=self._stored_context(farmer),
+            )
+        if not signal:
+            return WhatsAppWebhookResponse(
+                intent="satellite_advisory",
+                reply=phrase("weather_failed", language, location=self._location_label(farmer)),
+                template_name="satellite_unavailable",
+                transcript=transcript,
+                service_warnings=["Earth Engine satellite signal unavailable."],
+                stored_context=self._stored_context(farmer),
+            )
+        crop = self._crop_label(farmer.active_crop or "crop", language)
+        planted = farmer.active_crop_planted_at or "unknown"
+        variety = farmer.active_crop_variety or "unknown"
+        if language == "hi-IN":
+            reply = (
+                f"{self._location_label(farmer)} में {crop} की सैटेलाइट रिपोर्ट: "
+                f"NDVI {signal.ndvi}, NDWI {signal.ndwi}, NDMI {signal.ndmi}, EVI {signal.evi}, NDRE {signal.ndre}. "
+                f"पानी तनाव {signal.water_stress}, बढ़वार {signal.vegetation_status}, नमी {signal.moisture_status}, क्लोरोफिल {signal.chlorophyll_status}. "
+                f"बुवाई तारीख {planted}, वाण {variety}. Data: {signal.source}."
+            )
+        elif language == "mr-IN":
+            reply = (
+                f"{self._location_label(farmer)} येथे {crop} ची सॅटेलाइट रिपोर्ट: "
+                f"NDVI {signal.ndvi}, NDWI {signal.ndwi}, NDMI {signal.ndmi}, EVI {signal.evi}, NDRE {signal.ndre}. "
+                f"पाण्याचा ताण {signal.water_stress}, वाढ {signal.vegetation_status}, ओलावा {signal.moisture_status}, क्लोरोफिल {signal.chlorophyll_status}. "
+                f"लागवड तारीख {planted}, वाण {variety}. Data: {signal.source}."
+            )
+        else:
+            reply = (
+                f"Satellite report for {crop} at {self._location_label(farmer)}: "
+                f"NDVI {signal.ndvi}, NDWI {signal.ndwi}, NDMI {signal.ndmi}, EVI {signal.evi}, NDRE {signal.ndre}. "
+                f"Water stress {signal.water_stress}, vegetation {signal.vegetation_status}, moisture {signal.moisture_status}, chlorophyll {signal.chlorophyll_status}. "
+                f"Planted date {planted}, variety {variety}. Data: {signal.source}."
+            )
+        return WhatsAppWebhookResponse(
+            intent="satellite_advisory",
+            reply=reply,
+            template_name="satellite_answer",
+            transcript=transcript,
+            data_sources={
+                "satellite": signal.source,
+                "ndvi": signal.ndvi,
+                "ndwi": signal.ndwi,
+                "ndmi": signal.ndmi,
+                "evi": signal.evi,
+                "ndre": signal.ndre,
+                "waterStress": signal.water_stress,
+                "vegetationStatus": signal.vegetation_status,
+                "moistureStatus": signal.moisture_status,
+                "chlorophyllStatus": signal.chlorophyll_status,
+            },
+            stored_context=self._stored_context(farmer),
+        )
 
     def _crop_recommendation_response(
         self,
@@ -585,7 +669,7 @@ class WhatsAppService:
         text: str,
         channel: str,
     ) -> None:
-        if not response.reply or response.intent in {"location_update", "voice_message"}:
+        if not response.reply or response.intent in {"location_update", "voice_message", "satellite_advisory"}:
             return
         farmer = store.get_farmer(farmer_id)
         if not farmer:
@@ -622,6 +706,118 @@ class WhatsAppService:
         except AdvisoryProviderUnavailable as exc:
             response.service_warnings.append(f"AI natural-language generation unavailable: {exc}")
 
+    def _attach_day_start_bulletin(
+        self,
+        response: WhatsAppWebhookResponse,
+        farmer: FarmerResponse,
+        language: str,
+        channel: str,
+    ) -> None:
+        if not response.reply or not self._is_first_farmer_message_today(farmer.id):
+            return
+        bulletin = self._day_start_bulletin(farmer, language, channel)
+        if not bulletin:
+            return
+        response.reply = f"{response.reply}\n\n{bulletin}"
+        response.data_sources["dayStartBulletin"] = "weather_crop_satellite_context"
+        ConversationStore().log(
+            ConversationLogRequest(
+                farmer_id=farmer.id,
+                role=ConversationRole.assistant,
+                text=bulletin,
+                language=language,
+                channel=channel,
+                intent="day_start_bulletin",
+                metadata={"attached_to_reply": True},
+            )
+        )
+
+    def _is_first_farmer_message_today(self, farmer_id: str) -> bool:
+        today = datetime.now(UTC).date()
+        farmer_messages_today = [
+            message
+            for message in ConversationStore().recent(farmer_id, limit=40)
+            if message.role == ConversationRole.farmer and message.created_at.date() == today
+        ]
+        return len(farmer_messages_today) == 1
+
+    def _day_start_bulletin(self, farmer: FarmerResponse, language: str, channel: str) -> str | None:
+        parts: list[str] = []
+        location = ", ".join(part for part in [farmer.village, farmer.district] if part and part != "unknown")
+        heading = {
+            "hi-IN": "आज की जरूरी सूचना",
+            "mr-IN": "आजची महत्त्वाची सूचना",
+        }.get(language, "Today’s farm alert")
+
+        if farmer.farm.latitude is not None and farmer.farm.longitude is not None:
+            try:
+                weather = WeatherContextService().get_context(
+                    WeatherContextRequest(latitude=farmer.farm.latitude, longitude=farmer.farm.longitude)
+                )
+                rainfall_3d = sum((day.rainfall_mm or 0) for day in weather.daily[:3])
+                temperature = weather.current_temperature_c
+                if language == "hi-IN":
+                    parts.append(
+                        f"मौसम: {location or 'आपके खेत'} में अगले 3 दिन करीब {rainfall_3d:.1f} mm बारिश दिख रही है"
+                        f"{f', तापमान {temperature:.1f} C' if temperature is not None else ''}."
+                    )
+                elif language == "mr-IN":
+                    parts.append(
+                        f"हवामान: {location or 'तुमच्या शेतात'} पुढील 3 दिवस सुमारे {rainfall_3d:.1f} mm पाऊस दिसतो"
+                        f"{f', तापमान {temperature:.1f} C' if temperature is not None else ''}."
+                    )
+                else:
+                    parts.append(
+                        f"Weather: {location or 'your farm'} may get about {rainfall_3d:.1f} mm rain in 3 days"
+                        f"{f', temperature {temperature:.1f} C' if temperature is not None else ''}."
+                    )
+            except WeatherProviderUnavailable:
+                parts.append(self._localized_missing_weather(language))
+        else:
+            parts.append(self._localized_location_needed(language, channel))
+
+        if farmer.active_crop:
+            crop = self._crop_label(farmer.active_crop, language)
+            if language == "hi-IN":
+                parts.append(f"फसल: {crop} के लिए आज खेत की नमी और पत्तियों की हालत देखें.")
+            elif language == "mr-IN":
+                parts.append(f"पीक: {crop} साठी आज शेतातील ओलावा आणि पानांची स्थिती तपासा.")
+            else:
+                parts.append(f"Crop: for {crop}, check field moisture and leaf condition today.")
+
+        if farmer.farm.latitude is not None and farmer.farm.longitude is not None:
+            try:
+                signal = WeatherService()._satellite_signal(farmer)
+                if signal:
+                    if language == "hi-IN":
+                        parts.append(f"सैटेलाइट: पानी तनाव {signal.water_stress}, NDVI {signal.ndvi}.")
+                    elif language == "mr-IN":
+                        parts.append(f"सॅटेलाइट: पाण्याचा ताण {signal.water_stress}, NDVI {signal.ndvi}.")
+                    else:
+                        parts.append(f"Satellite: water stress {signal.water_stress}, NDVI {signal.ndvi}.")
+            except Exception:
+                pass
+
+        if not parts:
+            return None
+        return f"{heading}: " + " ".join(parts)
+
+    def _localized_missing_weather(self, language: str) -> str:
+        if language == "hi-IN":
+            return "मौसम सेवा अभी उपलब्ध नहीं है; खेत में नमी देखकर सिंचाई करें."
+        if language == "mr-IN":
+            return "हवामान सेवा सध्या उपलब्ध नाही; शेतातील ओलावा पाहून पाणी द्या."
+        return "Weather service is not available right now; check soil moisture before irrigation."
+
+    def _localized_location_needed(self, language: str, channel: str) -> str:
+        if language == "hi-IN":
+            return "स्थानीय मौसम और सैटेलाइट सलाह के लिए खेत की लोकेशन या पिनकोड भेजें."
+        if language == "mr-IN":
+            return "स्थानिक हवामान आणि सॅटेलाइट सल्ल्यासाठी शेताची लोकेशन किंवा पिनकोड पाठवा."
+        if channel == "sms":
+            return "Send village or pincode once for local weather and satellite advice."
+        return "Share farm location or pincode once for local weather and satellite advice."
+
     def _intent_with_context(self, farmer_id: str, text: str | None, intent: str) -> str:
         if self._extract_pincode(text):
             previous_intent = self._last_active_intent(farmer_id)
@@ -636,6 +832,7 @@ class WhatsAppService:
             "greeting",
             "identity_query",
             "weather_query",
+            "satellite_advisory",
         }:
             return intent
         previous_intent = self._last_active_intent(farmer_id)
@@ -704,6 +901,28 @@ class WhatsAppService:
     def _extract_relative_or_iso_date(self, text: str | None) -> str | None:
         normalized = (text or "").lower()
         today = datetime.now(UTC).date()
+        month_match = re.search(
+            r"\b(\d{1,2})(?:st|nd|rd|th)?\s+"
+            r"(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|"
+            r"sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)"
+            r"(?:\s+(20\d{2}))?\b",
+            normalized,
+        )
+        if month_match:
+            months = {
+                "jan": 1, "january": 1, "feb": 2, "february": 2, "mar": 3, "march": 3,
+                "apr": 4, "april": 4, "may": 5, "jun": 6, "june": 6, "jul": 7, "july": 7,
+                "aug": 8, "august": 8, "sep": 9, "september": 9, "oct": 10, "october": 10,
+                "nov": 11, "november": 11, "dec": 12, "december": 12,
+            }
+            try:
+                return today.replace(
+                    year=int(month_match.group(3) or today.year),
+                    month=months[month_match.group(2)],
+                    day=int(month_match.group(1)),
+                ).isoformat()
+            except ValueError:
+                pass
         if re.search(r"\b(today|aaj|आज)\b", normalized):
             return today.isoformat()
         if re.search(r"\b(yesterday|kal|काल)\b", normalized):
@@ -722,14 +941,16 @@ class WhatsAppService:
             return None
         match = re.search(r"(?:variety|var\.?|जात|वाण)\s*[:\-]?\s*([A-Za-z0-9 \-]{2,30})", text, flags=re.IGNORECASE)
         if match:
-            return match.group(1).strip(" .,!?:;")
+            value = match.group(1).strip(" .,!?:;")
+            value = re.split(r"\b(?:on|planted|sown|in|at|and)\b", value, maxsplit=1, flags=re.IGNORECASE)[0].strip(" .,!?:;")
+            return value or None
         return None
 
     def _last_active_intent(self, farmer_id: str) -> str | None:
         for message in reversed(ConversationStore().recent(farmer_id, limit=8)):
             if (
                 message.role == ConversationRole.assistant
-                and message.intent in {"crop_recommendation", "irrigation_advisory", "crop_diagnosis", "weather_query", "crop_planning"}
+                and message.intent in {"crop_recommendation", "irrigation_advisory", "crop_diagnosis", "weather_query", "crop_planning", "satellite_advisory"}
             ):
                 return message.intent
         return None
@@ -871,12 +1092,24 @@ class WhatsAppService:
                     audio_base64=payload.audio_base64,
                     language=language,
                     content_type=payload.audio_mime_type,
-                    audio_encoding="AUTO",
+                    audio_encoding=self._audio_encoding_for_content_type(payload.audio_mime_type),
                 )
             )
             return transcription.transcript
         except VoiceProviderUnavailable:
             return None
+
+    def _audio_encoding_for_content_type(self, content_type: str | None) -> str:
+        normalized = (content_type or "").split(";", 1)[0].strip().lower()
+        if normalized in {"audio/ogg", "application/ogg"}:
+            return "OGG_OPUS"
+        if normalized in {"audio/webm", "video/webm"}:
+            return "WEBM_OPUS"
+        if normalized in {"audio/mpeg", "audio/mp3"}:
+            return "MP3"
+        if normalized in {"audio/wav", "audio/x-wav", "audio/wave"}:
+            return "LINEAR16"
+        return "AUTO"
 
     def _speak_reply(self, farmer_id: str, reply: str, language: str):
         try:
@@ -1015,6 +1248,9 @@ class WhatsAppService:
             "state": None if farmer.state == "unknown" else farmer.state,
             "pincode": farmer.pincode,
             "activeCrop": farmer.active_crop,
+            "activeCropPlantedAt": farmer.active_crop_planted_at,
+            "activeCropVariety": farmer.active_crop_variety,
+            "activeCropStatus": farmer.active_crop_status,
             "waterAvailability": farmer.water_availability.value if farmer.water_availability else None,
             "latitude": farmer.farm.latitude,
             "longitude": farmer.farm.longitude,

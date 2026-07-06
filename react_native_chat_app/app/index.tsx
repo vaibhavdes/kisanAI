@@ -15,6 +15,7 @@ import {
   Alert,
   Image,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -36,6 +37,9 @@ const bubbleMine = "#dcf8c6";
 const bubbleTheirs = "#ffffff";
 const wallpaper = "#efe7da";
 const border = "#d9d4c8";
+const twilioWhatsAppNumber = "+1 415 523 8886";
+const twilioWhatsAppJoinCode = "join first-dig";
+const twilioWhatsAppUrl = `https://wa.me/14155238886?text=${encodeURIComponent(twilioWhatsAppJoinCode)}`;
 
 export default function IndexScreen() {
   const [phone, setPhone] = useState("");
@@ -133,6 +137,14 @@ function OnboardingScreen({
   const insets = useSafeAreaInsets();
   const languageOptions = [{ code: autoLanguageCode, label: "Auto" }, ...languages];
 
+  async function openWhatsAppSandbox() {
+    try {
+      await Linking.openURL(twilioWhatsAppUrl);
+    } catch {
+      Alert.alert(copy.whatsAppOpenFailedTitle, copy.whatsAppOpenFailedMessage);
+    }
+  }
+
   return (
     <ScrollView
       contentInsetAdjustmentBehavior="automatic"
@@ -227,6 +239,47 @@ function OnboardingScreen({
       </View>
 
       <View style={{ flex: 1 }} />
+      <Pressable
+        onPress={openWhatsAppSandbox}
+        style={{
+          minHeight: 58,
+          borderRadius: 18,
+          borderWidth: 1,
+          borderColor: "#b9dfcf",
+          backgroundColor: "#ecfff6",
+          paddingHorizontal: 14,
+          paddingVertical: 11,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 12,
+        }}
+      >
+        <View
+          style={{
+            width: 38,
+            height: 38,
+            borderRadius: 19,
+            backgroundColor: "#25d366",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Text selectable={false} style={{ color: "#fff", fontSize: 11, fontWeight: "900" }}>
+            WA
+          </Text>
+        </View>
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text selectable={false} style={{ color: whatsAppGreen, fontSize: 16, fontWeight: "900" }}>
+            {copy.chatOnWhatsApp}
+          </Text>
+          <Text selectable style={{ color: "#405a4d", fontSize: 12, lineHeight: 17 }}>
+            {copy.whatsAppSandboxHint.replace("+1 415 523 8886", twilioWhatsAppNumber)}
+          </Text>
+          <Text selectable style={{ color: "#0f4d3d", fontSize: 12, fontWeight: "900", lineHeight: 17 }}>
+            {copy.whatsAppSandboxCode}
+          </Text>
+        </View>
+      </Pressable>
       <Pressable
         onPress={onStart}
         style={{

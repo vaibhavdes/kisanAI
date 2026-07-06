@@ -4,7 +4,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    app_name: str = "Kisan AI"
+    app_name: str = "Kisan Alert"
     environment: str = "local"
     default_language: str = "hi-IN"
     enable_google_integrations: bool = False

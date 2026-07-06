@@ -9,7 +9,7 @@ ADMIN_HTML = """<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Kisan AI Admin</title>
+  <title>Kisan Alert Admin</title>
   <style>
     :root {
       color-scheme: light;
@@ -150,7 +150,7 @@ ADMIN_HTML = """<!doctype html>
 <body>
   <header>
     <div>
-      <h1>Kisan AI Admin</h1>
+      <h1>Kisan Alert Admin</h1>
       <div class="status" id="updatedAt">Loading provider configuration...</div>
     </div>
     <button class="secondary" id="refreshBtn">Refresh</button>
@@ -191,14 +191,44 @@ ADMIN_HTML = """<!doctype html>
     </div>
     <section>
       <div class="section-head">
-        <h2>Demo Alert Simulation</h2>
+        <h2>Scheduled Alerts</h2>
         <button class="secondary" id="seedFarmerBtn">Create Demo Farmer</button>
       </div>
       <div class="content stack">
         <div class="row">
           <div>
+            <label><input id="weatherEnabled" type="checkbox"> weather enabled</label>
+          </div>
+          <div>
+            <label for="weatherFrequency">Weather frequency days</label>
+            <input id="weatherFrequency" type="text" value="1">
+          </div>
+          <div>
+            <label><input id="satelliteEnabled" type="checkbox"> satellite enabled</label>
+          </div>
+          <div>
+            <label for="satelliteFrequency">Satellite frequency days</label>
+            <input id="satelliteFrequency" type="text" value="7">
+          </div>
+          <div>
+            <label for="morningHour">Morning hour</label>
+            <input id="morningHour" type="text" value="7">
+          </div>
+          <div>
+            <button class="secondary" id="saveScheduleBtn">Save Schedule</button>
+          </div>
+        </div>
+        <div class="row">
+          <div>
             <label for="farmerSelect">Farmer</label>
             <select id="farmerSelect"></select>
+          </div>
+          <div>
+            <label for="alertKind">Alert Type</label>
+            <select id="alertKind">
+              <option value="weather">Morning weather + crop advisory</option>
+              <option value="satellite">Satellite farm health WhatsApp</option>
+            </select>
           </div>
           <div>
             <label for="scenarioSelect">Scenario</label>
@@ -213,7 +243,13 @@ ADMIN_HTML = """<!doctype html>
             <input id="alertCrop" type="text" value="jowar">
           </div>
           <div>
-            <button id="runAlertBtn">Run Simulation</button>
+            <label><input id="respectFrequency" type="checkbox"> respect frequency</label>
+          </div>
+          <div>
+            <button id="runAlertBtn">Run Alert Now</button>
+          </div>
+          <div>
+            <button class="secondary" id="sendTestAlertBtn">Send Test Alert</button>
           </div>
         </div>
         <div class="row">
@@ -230,7 +266,7 @@ ADMIN_HTML = """<!doctype html>
             <input id="tempInput" type="text" value="37">
           </div>
         </div>
-        <div class="status">Use this for live demo: it calls the same proactive alert endpoint used by Scheduler/PubSub. Delivery can be dry-run or real depending on AUTHKEY_SEND_ENABLED.</div>
+        <div class="status">Weather alerts send WhatsApp through Twilio plus voice through Authkey. Satellite alerts are WhatsApp-only and need a Twilio approved template outside the 24-hour session window. Test alert bypasses frequency and dedupe for the selected farmer.</div>
         <pre id="alertOutput">No simulation run yet.</pre>
       </div>
     </section>
@@ -330,6 +366,37 @@ ADMIN_HTML = """<!doctype html>
       document.getElementById('updatedAt').textContent = `Updated at ${data.updated_at}`;
     }
 
+    async function loadSchedule() {
+      const response = await fetch('/api/v1/alerts/schedule');
+      const data = await response.json();
+      document.getElementById('weatherEnabled').checked = Boolean(data.weather_enabled);
+      document.getElementById('satelliteEnabled').checked = Boolean(data.satellite_enabled);
+      document.getElementById('weatherFrequency').value = data.weather_frequency_days || 1;
+      document.getElementById('satelliteFrequency').value = data.satellite_frequency_days || 7;
+      document.getElementById('morningHour').value = data.morning_hour_local ?? 7;
+    }
+
+    async function saveSchedule() {
+      const payload = {
+        weather_enabled: document.getElementById('weatherEnabled').checked,
+        satellite_enabled: document.getElementById('satelliteEnabled').checked,
+        weather_frequency_days: Number(document.getElementById('weatherFrequency').value || 1),
+        satellite_frequency_days: Number(document.getElementById('satelliteFrequency').value || 7),
+        morning_hour_local: Number(document.getElementById('morningHour').value || 7)
+      };
+      const response = await fetch('/api/v1/alerts/schedule', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.detail || 'Could not save schedule');
+      }
+      await loadSchedule();
+      showBanner('Alert schedule saved');
+    }
+
     async function loadFarmers() {
       const response = await fetch('/api/v1/farmers?limit=100');
       const farmers = await response.json();
@@ -416,7 +483,7 @@ ADMIN_HTML = """<!doctype html>
       document.getElementById('tempInput').value = preset.temp;
     }
 
-    async function runAlertSimulation() {
+    async function runAlertSimulation(options = {}) {
       const farmerId = document.getElementById('farmerSelect').value;
       if (!farmerId) {
         throw new Error('Create or select a farmer first');
@@ -426,14 +493,16 @@ ADMIN_HTML = """<!doctype html>
         .map(value => Number(value.trim()))
         .filter(value => Number.isFinite(value));
       const payload = {
+        kind: document.getElementById('alertKind').value,
         farmer_ids: [farmerId],
         crop: document.getElementById('alertCrop').value || 'crop',
-        min_priority: 'medium',
+        min_priority: 'low',
         rainfall_forecast_mm: rainfall,
         soil_moisture: Number(document.getElementById('moistureInput').value),
         temperature_c: Number(document.getElementById('tempInput').value),
+        respect_frequency: options.test ? false : document.getElementById('respectFrequency').checked,
         dedupe: false,
-        idempotency_key: `admin-demo-${Date.now()}`
+        idempotency_key: `${options.test ? 'admin-test' : 'admin-demo'}-${Date.now()}`
       };
       const response = await fetch('/api/v1/alerts/run-daily', {
         method: 'POST',
@@ -444,8 +513,35 @@ ADMIN_HTML = """<!doctype html>
       if (!response.ok) {
         throw new Error(data.detail || 'Alert simulation failed');
       }
-      document.getElementById('alertOutput').textContent = JSON.stringify(data, null, 2);
-      showBanner('Alert simulation completed');
+      document.getElementById('alertOutput').textContent = JSON.stringify({
+        summary: summarizeAlertRun(data),
+        raw: data
+      }, null, 2);
+      showBanner(options.test ? 'Test alert submitted' : 'Alert run completed');
+    }
+
+    function summarizeAlertRun(data) {
+      const first = (data.results || [])[0] || {};
+      const delivery = first.delivery || {};
+      return {
+        runDate: data.run_date,
+        generated: data.generated,
+        delivered: data.delivered,
+        farmerId: first.farmer_id,
+        risk: first.risk_level,
+        priority: first.priority,
+        overallStatus: delivery.overall_status,
+        channels: (delivery.results || []).map(item => ({
+          channel: item.channel,
+          provider: item.provider,
+          operation: item.operation,
+          status: item.status,
+          sent: item.sent,
+          dryRun: item.dry_run,
+          error: item.error,
+          rawStatus: item.raw_status
+        }))
+      };
     }
 
     async function loadTickets() {
@@ -551,10 +647,11 @@ ADMIN_HTML = """<!doctype html>
     }
 
     async function refreshAll() {
-      await Promise.all([loadHealth(), loadRoutes(), loadFarmers(), loadTickets(), loadAuditLogs()]);
+      await Promise.all([loadHealth(), loadRoutes(), loadSchedule(), loadFarmers(), loadTickets(), loadAuditLogs()]);
     }
 
     document.getElementById('saveBtn').addEventListener('click', saveRoutes);
+    document.getElementById('saveScheduleBtn').addEventListener('click', () => saveSchedule().catch(error => showBanner(error.message, true)));
     document.getElementById('refreshBtn').addEventListener('click', refreshAll);
     document.getElementById('refreshTicketsBtn').addEventListener('click', () => loadTickets().catch(error => showBanner(error.message, true)));
     document.getElementById('refreshFarmersBtn').addEventListener('click', () => loadFarmers().catch(error => showBanner(error.message, true)));
@@ -562,6 +659,7 @@ ADMIN_HTML = """<!doctype html>
     document.getElementById('seedFarmerBtn').addEventListener('click', () => createDemoFarmer().catch(error => showBanner(error.message, true)));
     document.getElementById('scenarioSelect').addEventListener('change', applyScenario);
     document.getElementById('runAlertBtn').addEventListener('click', () => runAlertSimulation().catch(error => showBanner(error.message, true)));
+    document.getElementById('sendTestAlertBtn').addEventListener('click', () => runAlertSimulation({ test: true }).catch(error => showBanner(error.message, true)));
     document.getElementById('tickets').addEventListener('click', event => {
       if (event.target && event.target.dataset.action === 'updateTicket') {
         updateTicket(event.target.closest('.card')).catch(error => showBanner(error.message, true));

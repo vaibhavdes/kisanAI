@@ -26,6 +26,7 @@ from app.models.schemas import (
     DetectLanguageResponse,
     TranslateTextResponse,
     WeatherContextRequest,
+    WeatherContextResponse,
     WhatsAppWebhookResponse,
     VoiceSpeakResponse,
     VoiceTranscribeResponse,
@@ -142,10 +143,12 @@ def test_admin_dashboard_serves_provider_switch_ui() -> None:
     response = client.get("/admin")
 
     assert response.status_code == 200
-    assert "Kisan AI Admin" in response.text
+    assert "Kisan Alert Admin" in response.text
     assert "/api/v1/providers/config" in response.text
     assert "/health" in response.text
-    assert "Demo Alert Simulation" in response.text
+    assert "Scheduled Alerts" in response.text
+    assert "/api/v1/alerts/schedule" in response.text
+    assert "Send Test Alert" in response.text
     assert "/api/v1/alerts/run-daily" in response.text
     assert "/api/v1/expert/tickets" in response.text
     assert 'sms_voice: ["authkey"]' in response.text
@@ -390,6 +393,66 @@ def test_crop_planning_slot_flow_stores_active_crop() -> None:
     assert farmer.active_crop_variety == "M35-1"
 
 
+def test_crop_plan_context_shared_between_whatsapp_and_app_for_satellite(monkeypatch) -> None:
+    farmer_id = create_demo_farmer()
+
+    def fake_signal(self, farmer):
+        return SatelliteSignalResponse(
+            farmer_id=farmer.id,
+            latitude=farmer.farm.latitude,
+            longitude=farmer.farm.longitude,
+            geometry_type="point_buffer",
+            buffer_m=250,
+            start_date="2026-04-07",
+            end_date="2026-07-06",
+            source="earth_engine_sentinel_2",
+            ndvi=0.44,
+            ndwi=-0.03,
+            ndmi=0.09,
+            evi=0.33,
+            ndre=0.25,
+            water_stress="medium",
+            vegetation_status="moderate",
+            moisture_status="dry",
+            chlorophyll_status="medium",
+            note="Sentinel-2 farm signal.",
+        )
+
+    monkeypatch.setattr("app.services.weather_service.WeatherService._satellite_signal", fake_signal)
+
+    planted = client.post(
+        "/api/v1/whatsapp/webhook",
+        json={
+            "from_phone": "9999999999",
+            "text": "I planted jowar on 1st January variety CSH-22",
+            "language": "en-IN",
+        },
+    )
+    assert planted.status_code == 200
+    farmer = store.get_farmer(farmer_id)
+    assert farmer is not None
+    assert farmer.active_crop == "sorghum"
+    assert farmer.active_crop_planted_at == "2026-01-01"
+    assert farmer.active_crop_variety == "CSH-22"
+
+    satellite = client.post(
+        "/api/v1/chat/message",
+        json={
+            "from_phone": "9999999999",
+            "text": "Give my farm satellite analysis all information you can",
+            "language": "en-IN",
+        },
+    )
+    assert satellite.status_code == 200
+    body = satellite.json()
+    assert body["intent"] == "satellite_advisory"
+    assert body["data_sources"]["satellite"] == "earth_engine_sentinel_2"
+    assert body["data_sources"]["ndvi"] == 0.44
+    assert "2026-01-01" in body["reply"]
+    assert "CSH-22" in body["reply"]
+    assert "NDVI 0.44" in body["reply"]
+
+
 def test_provider_audit_endpoint_lists_service_logs() -> None:
     response = client.get("/api/v1/providers/audit?limit=10")
     assert response.status_code == 200
@@ -480,7 +543,8 @@ def test_whatsapp_text_identifies_farmer_and_logs_conversation() -> None:
 
     recent = client.get(f"/api/v1/conversations/{body['farmer_id']}")
     assert recent.status_code == 200
-    assert [item["role"] for item in recent.json()] == ["farmer", "assistant"]
+    assert [item["role"] for item in recent.json()] == ["farmer", "assistant", "assistant"]
+    assert recent.json()[1]["intent"] == "day_start_bulletin"
 
 
 def test_app_chat_handles_marathi_text_without_provider_send() -> None:
@@ -503,7 +567,8 @@ def test_app_chat_handles_marathi_text_without_provider_send() -> None:
     recent = client.get(f"/api/v1/conversations/{body['farmer_id']}")
     assert recent.status_code == 200
     messages = recent.json()
-    assert [item["channel"] for item in messages] == ["app", "app"]
+    assert [item["channel"] for item in messages] == ["app", "app", "app"]
+    assert messages[1]["intent"] == "day_start_bulletin"
 
 
 def test_app_chat_attaches_native_language_audio_when_tts_available(monkeypatch) -> None:
@@ -641,7 +706,7 @@ def test_twilio_whatsapp_audio_voice_note_returns_twiml_media(monkeypatch) -> No
     def fake_transcribe(self, payload):
         assert payload.audio_uri == audio_url
         assert payload.content_type == "audio/ogg"
-        assert payload.audio_encoding == "AUTO"
+        assert payload.audio_encoding == "OGG_OPUS"
         return VoiceTranscribeResponse(
             transcript="Should I irrigate today?",
             language="en-IN",
@@ -650,7 +715,7 @@ def test_twilio_whatsapp_audio_voice_note_returns_twiml_media(monkeypatch) -> No
 
     def fake_speak(self, payload):
         assert payload.language == "en-IN"
-        assert "soil moisture" in payload.text
+        assert "farm location or pincode" in payload.text
         return VoiceSpeakResponse(
             audio_base64=base64.b64encode(b"reply audio").decode("ascii"),
             provider="sarvam_tts",
@@ -678,14 +743,16 @@ def test_twilio_whatsapp_audio_voice_note_returns_twiml_media(monkeypatch) -> No
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/xml")
-    assert "soil moisture" in response.text
+    assert "farm location or pincode" in response.text
+    assert response.text.count("<Message") == 2
+    assert re.search(r"<Message[^>]*>.*farm location or pincode.*</Message><Message", response.text, flags=re.S)
     media_match = re.search(r"<Media>([^<]+)</Media>", response.text)
     assert media_match is not None
     media_url = urlparse(media_match.group(1))
     media_response = client.get(f"{media_url.path}?{media_url.query}")
     assert media_response.status_code == 200
     assert media_response.content == b"reply audio"
-    assert media_response.headers["content-type"].startswith("audio/mpeg")
+    assert media_response.headers["content-type"] == "audio/mpeg"
     assert "reply.mp3" in media_response.headers["content-disposition"]
 
     farmer = store.list_farmers()[0]
@@ -1237,6 +1304,7 @@ def test_daily_alert_runner_generates_and_delivers_high_risk_alert(monkeypatch) 
     monkeypatch.setattr(settings, "authkey_sms_sender", "KISAN")
     monkeypatch.setattr(settings, "authkey_send_enabled", False)
     monkeypatch.setattr(settings, "twilio_enable_live_send", False)
+    monkeypatch.setattr(settings, "twilio_content_sid", "HX123")
 
     response = client.post(
         "/api/v1/alerts/run-daily",
@@ -1260,10 +1328,11 @@ def test_daily_alert_runner_generates_and_delivers_high_risk_alert(monkeypatch) 
     assert result["risk_level"] == "critical"
     assert result["priority"] == "urgent"
     assert result["delivery"]["overall_status"] == "dry_run"
+    assert {item["channel"] for item in result["delivery"]["results"]} == {"whatsapp", "voice_call"}
 
     recent = client.get(f"/api/v1/conversations/{farmer_id}")
     assert recent.status_code == 200
-    assert recent.json()[-1]["intent"] == "daily_dry_spell_alert"
+    assert recent.json()[-1]["intent"] == "daily_weather_crop_alert"
 
     duplicate_response = client.post(
         "/api/v1/alerts/run-daily",
@@ -1282,6 +1351,189 @@ def test_daily_alert_runner_generates_and_delivers_high_risk_alert(monkeypatch) 
     assert duplicate["generated"] == 0
     assert duplicate["skipped"] == 1
     assert duplicate["results"][0]["skipped_reason"] == "duplicate_alert"
+
+
+def test_alert_schedule_config_and_satellite_whatsapp_only(monkeypatch) -> None:
+    farmer_id = create_demo_farmer()
+    monkeypatch.setattr(settings, "twilio_enable_live_send", False)
+    monkeypatch.setattr(settings, "twilio_content_sid", "HX123")
+
+    schedule_response = client.patch(
+        "/api/v1/alerts/schedule",
+        json={
+            "weather_frequency_days": 1,
+            "satellite_frequency_days": 7,
+            "weather_enabled": True,
+            "satellite_enabled": True,
+            "morning_hour_local": 6,
+        },
+    )
+    assert schedule_response.status_code == 200
+    assert schedule_response.json()["satellite_frequency_days"] == 7
+
+    def fake_signal(self, **kwargs):
+        return SatelliteSignalResponse(
+            farmer_id=kwargs["farmer_id"],
+            latitude=kwargs["latitude"],
+            longitude=kwargs["longitude"],
+            geometry_type="point_buffer",
+            buffer_m=250,
+            start_date="2026-04-07",
+            end_date="2026-07-06",
+            source="earth_engine_sentinel_2",
+            ndvi=0.34,
+            ndwi=-0.18,
+            ndmi=-0.14,
+            evi=0.29,
+            ndre=0.2,
+            water_stress="high",
+            vegetation_status="moderate",
+            moisture_status="very_dry",
+            chlorophyll_status="medium",
+            note="Sentinel-2 farm signal.",
+        )
+
+    monkeypatch.setattr("app.services.earth_engine_service.EarthEngineService.get_farm_signal", fake_signal)
+    response = client.post(
+        "/api/v1/alerts/run-daily",
+        json={
+            "kind": "satellite",
+            "farmer_ids": [farmer_id],
+            "crop": "maize",
+            "min_priority": "low",
+            "respect_frequency": False,
+            "dedupe": False,
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["generated"] == 1
+    result = body["results"][0]
+    assert result["priority"] == "high"
+    assert "Satellite update" in result["advisory"]
+    assert result["delivery"]["overall_status"] == "dry_run"
+    assert [item["channel"] for item in result["delivery"]["results"]] == ["whatsapp"]
+
+
+def test_scheduled_whatsapp_alert_requires_twilio_template(monkeypatch) -> None:
+    farmer_id = create_demo_farmer()
+    monkeypatch.setattr(settings, "authkey_api_key", "secret-key")
+    monkeypatch.setattr(settings, "authkey_sms_sender", "KISAN")
+    monkeypatch.setattr(settings, "authkey_send_enabled", False)
+    monkeypatch.setattr(settings, "twilio_content_sid", None)
+
+    response = client.post(
+        "/api/v1/alerts/run-daily",
+        json={
+            "farmer_ids": [farmer_id],
+            "crop": "maize",
+            "min_priority": "low",
+            "rainfall_forecast_mm": [0, 0, 0, 0, 0, 0, 0],
+            "soil_moisture": 0.12,
+            "temperature_c": 38,
+            "dedupe": False,
+        },
+    )
+
+    assert response.status_code == 200
+    results = response.json()["results"][0]["delivery"]["results"]
+    whatsapp = next(item for item in results if item["channel"] == "whatsapp")
+    assert whatsapp["status"] == "skipped_no_twilio_template"
+
+
+def test_scheduled_whatsapp_alert_uses_active_session_without_template(monkeypatch) -> None:
+    farmer_id = create_demo_farmer()
+    monkeypatch.setattr(settings, "authkey_api_key", "secret-key")
+    monkeypatch.setattr(settings, "authkey_sms_sender", "KISAN")
+    monkeypatch.setattr(settings, "authkey_send_enabled", False)
+    monkeypatch.setattr(settings, "twilio_content_sid", None)
+    monkeypatch.setattr(settings, "twilio_enable_live_send", False)
+
+    inbound = client.post(
+        "/api/v1/whatsapp/webhook",
+        json={"from_phone": "9999999999", "text": "hi", "language": "en-IN"},
+    )
+    assert inbound.status_code == 200
+
+    response = client.post(
+        "/api/v1/alerts/run-daily",
+        json={
+            "farmer_ids": [farmer_id],
+            "crop": "maize",
+            "min_priority": "low",
+            "rainfall_forecast_mm": [0, 0, 0, 0, 0, 0, 0],
+            "soil_moisture": 0.12,
+            "temperature_c": 38,
+            "dedupe": False,
+        },
+    )
+
+    assert response.status_code == 200
+    results = response.json()["results"][0]["delivery"]["results"]
+    whatsapp = next(item for item in results if item["channel"] == "whatsapp")
+    assert whatsapp["status"] == "dry_run"
+    assert whatsapp["operation"] == "send_twilio_whatsapp_text"
+
+
+def test_first_farmer_message_of_day_appends_bulletin(monkeypatch) -> None:
+    farmer_id = create_demo_farmer()
+    farmer = store.get_farmer(farmer_id)
+    assert farmer is not None
+
+    def fake_weather(self, payload):
+        return WeatherContextResponse(
+            latitude=payload.latitude,
+            longitude=payload.longitude,
+            source=ProviderName.open_meteo,
+            fallback_used=False,
+            provider_statuses=[],
+            current_temperature_c=31.2,
+            daily=[
+                {"date": "2026-07-06", "rainfall_mm": 2.0},
+                {"date": "2026-07-07", "rainfall_mm": 3.0},
+                {"date": "2026-07-08", "rainfall_mm": 4.0},
+            ],
+        )
+
+    def fake_satellite(self, farmer):
+        return SatelliteSignalResponse(
+            farmer_id=farmer.id,
+            latitude=farmer.farm.latitude,
+            longitude=farmer.farm.longitude,
+            geometry_type="point_buffer",
+            buffer_m=250,
+            start_date="2026-04-07",
+            end_date="2026-07-06",
+            source="earth_engine_sentinel_2",
+            ndvi=0.42,
+            ndwi=-0.02,
+            ndmi=0.08,
+            evi=0.31,
+            ndre=0.24,
+            water_stress="medium",
+            vegetation_status="moderate",
+            moisture_status="dry",
+            chlorophyll_status="medium",
+            note="Sentinel-2 farm signal.",
+        )
+
+    monkeypatch.setattr("app.services.weather_context_service.WeatherContextService.get_context", fake_weather)
+    monkeypatch.setattr("app.services.weather_service.WeatherService._satellite_signal", fake_satellite)
+
+    first = client.post(
+        "/api/v1/whatsapp/webhook",
+        json={"from_phone": "9999999999", "text": "hi", "language": "en-IN"},
+    )
+    assert first.status_code == 200
+    assert "Today" in first.json()["reply"]
+    assert "Satellite" in first.json()["reply"]
+
+    second = client.post(
+        "/api/v1/whatsapp/webhook",
+        json={"from_phone": "9999999999", "text": "weather", "language": "en-IN"},
+    )
+    assert second.status_code == 200
+    assert "Today’s farm alert" not in second.json()["reply"]
 
 
 def test_daily_alert_runner_accepts_pubsub_push_payload(monkeypatch) -> None:

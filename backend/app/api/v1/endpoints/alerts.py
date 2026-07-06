@@ -6,6 +6,8 @@ from fastapi import APIRouter, HTTPException
 from app.models.schemas import (
     AlertDeliveryRequest,
     AlertDeliveryResponse,
+    AlertScheduleConfig,
+    AlertScheduleConfigUpdate,
     PubSubPushRequest,
     ProactiveAlertRunRequest,
     ProactiveAlertRunResponse,
@@ -28,6 +30,21 @@ def deliver_alert(payload: AlertDeliveryRequest) -> AlertDeliveryResponse:
 @router.post("/run-daily", response_model=ProactiveAlertRunResponse)
 def run_daily_alerts(payload: ProactiveAlertRunRequest) -> ProactiveAlertRunResponse:
     return ProactiveAlertService().run_daily(payload)
+
+
+@router.get("/schedule", response_model=AlertScheduleConfig)
+def get_alert_schedule() -> AlertScheduleConfig:
+    return store.get_alert_schedule_config()
+
+
+@router.patch("/schedule", response_model=AlertScheduleConfig)
+def update_alert_schedule(payload: AlertScheduleConfigUpdate) -> AlertScheduleConfig:
+    config = store.get_alert_schedule_config()
+    data = config.model_dump()
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        if value is not None:
+            data[field] = value
+    return store.save_alert_schedule_config(AlertScheduleConfig(**data))
 
 
 @router.post("/run-daily/pubsub", response_model=ProactiveAlertRunResponse)

@@ -35,6 +35,11 @@ class AlertPriority(StrEnum):
     urgent = "urgent"
 
 
+class ScheduledAlertKind(StrEnum):
+    weather = "weather"
+    satellite = "satellite"
+
+
 class ProviderFeature(StrEnum):
     weather = "weather"
     stt = "stt"
@@ -325,6 +330,7 @@ class AlertDeliveryRequest(BaseModel):
     language: str | None = None
     media_url: str | None = None
     media_file_name: str | None = None
+    requires_whatsapp_template: bool = False
 
 
 class ChannelDeliveryResult(BaseModel):
@@ -382,9 +388,10 @@ class ChannelReceiptResponse(BaseModel):
 
 
 class ProactiveAlertRunRequest(BaseModel):
+    kind: ScheduledAlertKind = ScheduledAlertKind.weather
     farmer_ids: list[str] | None = None
     crop: str = "crop"
-    min_priority: AlertPriority = AlertPriority.medium
+    min_priority: AlertPriority = AlertPriority.low
     rainfall_forecast_mm: list[float] = Field(default_factory=list, max_length=10)
     soil_moisture: float | None = Field(default=None, ge=0, le=1)
     temperature_c: float | None = None
@@ -392,6 +399,7 @@ class ProactiveAlertRunRequest(BaseModel):
     run_date: str | None = None
     idempotency_key: str | None = None
     dedupe: bool = True
+    respect_frequency: bool = True
 
 
 class ProactiveAlertFarmerResult(BaseModel):
@@ -424,6 +432,23 @@ class AlertRunRecord(BaseModel):
     message: str
     delivery_status: str
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class AlertScheduleConfig(BaseModel):
+    weather_frequency_days: int = Field(default=1, ge=1, le=30)
+    satellite_frequency_days: int = Field(default=7, ge=1, le=30)
+    weather_enabled: bool = True
+    satellite_enabled: bool = True
+    morning_hour_local: int = Field(default=7, ge=0, le=23)
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class AlertScheduleConfigUpdate(BaseModel):
+    weather_frequency_days: int | None = Field(default=None, ge=1, le=30)
+    satellite_frequency_days: int | None = Field(default=None, ge=1, le=30)
+    weather_enabled: bool | None = None
+    satellite_enabled: bool | None = None
+    morning_hour_local: int | None = Field(default=None, ge=0, le=23)
 
 
 class PubSubMessage(BaseModel):

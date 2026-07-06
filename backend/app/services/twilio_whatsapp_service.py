@@ -133,13 +133,13 @@ class TwilioWhatsAppService:
             safe_callback = escape(status_callback_url, quote=True)
             attrs = f' action="{safe_callback}" statusCallback="{safe_callback}"'
         if media_url:
+            # WhatsApp can drop the text body when audio/video/document media is attached.
+            # Send text and voice as separate session replies so both are delivered.
             return (
                 '<?xml version="1.0" encoding="UTF-8"?>'
                 "<Response>"
-                f"<Message{attrs}>"
-                f"<Body>{escape(body)}</Body>"
-                f"<Media>{escape(media_url)}</Media>"
-                "</Message>"
+                f"<Message{attrs}>{escape(body)}</Message>"
+                f"<Message{attrs}><Media>{escape(media_url)}</Media></Message>"
                 "</Response>"
             )
         return f'<?xml version="1.0" encoding="UTF-8"?><Response><Message{attrs}>{escape(body)}</Message></Response>'
@@ -322,14 +322,25 @@ class TwilioWhatsAppService:
             content = base64.b64decode(response.response_audio_base64, validate=True)
         except (BinasciiError, ValueError):
             return None
-        public_url = self._publish_response_media(content, response.response_audio_content_type)
+        content_type = self._clean_audio_content_type(response.response_audio_content_type)
+        public_url = self._publish_response_media(content, content_type)
         if public_url:
             return public_url
         if settings.environment == "production" and (settings.twilio_media_bucket or settings.storage_bucket):
             return None
         if not base_url:
             return None
-        return self._memory_media_url(content, response.response_audio_content_type, base_url=base_url)
+        return self._memory_media_url(content, content_type, base_url=base_url)
+
+    def _clean_audio_content_type(self, content_type: str) -> str:
+        normalized = content_type.split(";", 1)[0].strip().lower()
+        if normalized in {"audio/mpeg", "audio/mp3"}:
+            return "audio/mpeg"
+        if normalized in {"audio/ogg", "audio/opus"}:
+            return "audio/ogg"
+        if normalized in {"audio/wav", "audio/wave", "audio/x-wav"}:
+            return "audio/wav"
+        return normalized or "audio/mpeg"
 
     def _publish_response_media(self, content: bytes, content_type: str) -> str | None:
         bucket_name = settings.twilio_media_bucket or settings.storage_bucket

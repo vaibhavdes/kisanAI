@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Kisan AI",
+    "name": "Kisan Alert",
     "slug": "kisan-ai-chat",
     "version": "0.1.0",
     "orientation": "portrait",
@@ -14,20 +14,20 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Kisan AI uses your farm location for localized weather and advisory context."
+          "locationWhenInUsePermission": "Kisan Alert uses your farm location for localized weather and advisory context."
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Kisan AI uses crop photos for AI crop-health diagnosis.",
-          "cameraPermission": "Kisan AI uses camera photos for AI crop-health diagnosis."
+          "photosPermission": "Kisan Alert uses crop photos for AI crop-health diagnosis.",
+          "cameraPermission": "Kisan Alert uses camera photos for AI crop-health diagnosis."
         }
       ],
       [
         "expo-audio",
         {
-          "microphonePermission": "Kisan AI uses voice notes so farmers can ask advisory questions by speaking."
+          "microphonePermission": "Kisan Alert uses voice notes so farmers can ask advisory questions by speaking."
         }
       ]
     ]

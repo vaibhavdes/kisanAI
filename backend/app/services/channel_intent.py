@@ -28,6 +28,8 @@ def detect_farmer_intent(
         return "identity_query"
     if _has_any(normalized, WEATHER_TERMS):
         return "weather_query"
+    if _has_any(normalized, SATELLITE_TERMS):
+        return "satellite_advisory"
 
     if _has_any(normalized, CROP_PLANNING_TERMS):
         return "crop_planning"
@@ -109,6 +111,23 @@ WEATHER_TERMS = [
     "వర్షం",
     "ಹವಾಮಾನ",
     "ಮಳೆ",
+]
+
+SATELLITE_TERMS = [
+    "satellite",
+    "ndvi",
+    "ndwi",
+    "ndmi",
+    "earth engine",
+    "farm analysis",
+    "crop growth",
+    "water stress",
+    "सैटेलाइट",
+    "उपग्रह",
+    "पानी तनाव",
+    "सॅटेलाइट",
+    "उपग्रह",
+    "पाण्याचा ताण",
 ]
 
 IRRIGATION_TERMS = [

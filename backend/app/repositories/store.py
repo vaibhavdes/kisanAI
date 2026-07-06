@@ -5,6 +5,7 @@ from typing import Protocol
 from app.core.config import settings
 from app.models.schemas import (
     AlertRunRecord,
+    AlertScheduleConfig,
     ChannelDeliveryReceipt,
     ConversationMessage,
     ExpertTicket,
@@ -54,6 +55,10 @@ class AppStore(Protocol):
 
     def get_alert_run_record(self, key: str) -> AlertRunRecord | None: ...
 
+    def get_alert_schedule_config(self) -> AlertScheduleConfig: ...
+
+    def save_alert_schedule_config(self, config: AlertScheduleConfig) -> AlertScheduleConfig: ...
+
     def list_provider_routes(self) -> list[ProviderRoute]: ...
 
     def get_provider_route(self, feature: ProviderFeature) -> ProviderRoute: ...
@@ -76,6 +81,7 @@ class LocalStore:
         self.delivery_receipts: list[ChannelDeliveryReceipt] = []
         self.service_audit_logs: list[ServiceAuditLog] = []
         self.alert_run_records: dict[str, AlertRunRecord] = {}
+        self.alert_schedule_config = AlertScheduleConfig()
         self.provider_routes: dict[ProviderFeature, ProviderRoute] = default_provider_routes()
         self.provider_routes_updated_at = datetime.now(UTC)
 
@@ -168,6 +174,13 @@ class LocalStore:
     def get_alert_run_record(self, key: str) -> AlertRunRecord | None:
         return self.alert_run_records.get(key)
 
+    def get_alert_schedule_config(self) -> AlertScheduleConfig:
+        return self.alert_schedule_config
+
+    def save_alert_schedule_config(self, config: AlertScheduleConfig) -> AlertScheduleConfig:
+        self.alert_schedule_config = config
+        return config
+
     def list_provider_routes(self) -> list[ProviderRoute]:
         return list(self.provider_routes.values())
 
@@ -187,6 +200,7 @@ class LocalStore:
         self.delivery_receipts.clear()
         self.service_audit_logs.clear()
         self.alert_run_records.clear()
+        self.alert_schedule_config = AlertScheduleConfig()
         self.provider_routes = default_provider_routes()
         self.provider_routes_updated_at = datetime.now(UTC)
 
@@ -370,6 +384,18 @@ class FirestoreStore:
     def get_alert_run_record(self, key: str) -> AlertRunRecord | None:
         doc = self.client.collection("alert_run_records").document(key).get()
         return AlertRunRecord(**doc.to_dict()) if doc.exists else None
+
+    def get_alert_schedule_config(self) -> AlertScheduleConfig:
+        doc = self.client.collection("system_state").document("alert_schedule").get()
+        if doc.exists:
+            return AlertScheduleConfig(**doc.to_dict())
+        config = AlertScheduleConfig()
+        self.save_alert_schedule_config(config)
+        return config
+
+    def save_alert_schedule_config(self, config: AlertScheduleConfig) -> AlertScheduleConfig:
+        self.client.collection("system_state").document("alert_schedule").set(config.model_dump(mode="json"))
+        return config
 
     def list_provider_routes(self) -> list[ProviderRoute]:
         docs = self.client.collection("provider_routes").stream()
