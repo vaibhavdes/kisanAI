@@ -9,7 +9,7 @@ SUBSCRIPTION_NAME="${SUBSCRIPTION_NAME:-kisan-alerts-daily-push}"
 SCHEDULER_JOB_NAME="${SCHEDULER_JOB_NAME:-kisan-alerts-daily}"
 SCHEDULE="${SCHEDULE:-0 7 * * *}"
 TIME_ZONE="${TIME_ZONE:-Asia/Kolkata}"
-MESSAGE_BODY="${MESSAGE_BODY:-{\"crop\":\"maize\",\"min_priority\":\"medium\",\"max_farmers\":100}}"
+MESSAGE_BODY="${MESSAGE_BODY:-{\"kind\":\"weather\",\"min_priority\":\"low\",\"max_farmers\":100}}"
 
 gcloud config set project "${PROJECT_ID}" >/dev/null
 
