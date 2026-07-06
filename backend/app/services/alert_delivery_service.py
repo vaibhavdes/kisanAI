@@ -13,6 +13,7 @@ from app.models.schemas import (
 )
 from app.repositories.store import store
 from app.services.providers.authkey_client import AuthkeyClient, AuthkeyResult
+from app.services.service_audit_log_service import ServiceAuditLogService
 from app.services.twilio_whatsapp_service import TwilioWhatsAppService
 from app.utils.phone import normalize_phone
 
@@ -32,9 +33,9 @@ class AlertDeliveryService:
         if channel == "whatsapp":
             return self._send_whatsapp(farmer, payload)
         if channel == "sms":
-            return self._send_sms(farmer.phone, payload.message)
+            return self._send_sms(farmer, payload.message)
         if channel == "voice_call":
-            return self._send_voice_call(farmer.phone, payload.message)
+            return self._send_voice_call(farmer, payload.message)
         return ChannelDeliveryResult(channel=channel, status="unsupported_channel")
 
     def _send_whatsapp(self, farmer: FarmerResponse, payload: AlertDeliveryRequest) -> ChannelDeliveryResult:
@@ -56,7 +57,7 @@ class AlertDeliveryService:
                 retryable=False,
                 metadata={"templateRequired": True},
             )
-        return TwilioWhatsAppService().send_whatsapp(
+        result = TwilioWhatsAppService().send_whatsapp(
             to_phone=farmer.phone,
             body=payload.message,
             media_url=payload.media_url if not content_sid else None,
@@ -72,6 +73,8 @@ class AlertDeliveryService:
             ),
             dry_run=not settings.twilio_enable_live_send,
         )
+        self._record_delivery_audit(farmer, "whatsapp", result, {"templateRequired": payload.requires_whatsapp_template})
+        return result
 
     def _has_active_whatsapp_session(self, farmer_id: str) -> bool:
         cutoff = datetime.now(UTC) - timedelta(hours=24)
@@ -82,7 +85,7 @@ class AlertDeliveryService:
             for message in store.list_conversation_messages(farmer_id, limit=50)
         )
 
-    def _send_sms(self, phone: str, message: str) -> ChannelDeliveryResult:
+    def _send_sms(self, farmer: FarmerResponse, message: str) -> ChannelDeliveryResult:
         route = store.get_provider_route(ProviderFeature.sms_voice)
         if not route.enabled:
             return ChannelDeliveryResult(channel="sms", provider=str(route.primary), status="provider_disabled")
@@ -94,15 +97,17 @@ class AlertDeliveryService:
             return ChannelDeliveryResult(channel="sms", provider="authkey", status="skipped_no_sender")
 
         result = AuthkeyClient(settings.authkey_api_key).send_sms(
-            mobile=self._authkey_mobile(phone),
+            mobile=self._authkey_mobile(farmer.phone),
             country_code=settings.authkey_test_country_code,
             sms=message,
             sender=settings.authkey_sms_sender,
             dry_run=not settings.authkey_send_enabled,
         )
-        return self._from_authkey("sms", result)
+        delivery = self._from_authkey("sms", result)
+        self._record_delivery_audit(farmer, "sms", delivery, {"countryCode": settings.authkey_test_country_code})
+        return delivery
 
-    def _send_voice_call(self, phone: str, message: str) -> ChannelDeliveryResult:
+    def _send_voice_call(self, farmer: FarmerResponse, message: str) -> ChannelDeliveryResult:
         route = store.get_provider_route(ProviderFeature.sms_voice)
         if not route.enabled:
             return ChannelDeliveryResult(channel="voice_call", provider=str(route.primary), status="provider_disabled")
@@ -112,7 +117,7 @@ class AlertDeliveryService:
             return ChannelDeliveryResult(channel="voice_call", provider="authkey", status="skipped_no_authkey")
 
         client = AuthkeyClient(settings.authkey_api_key)
-        mobile = self._authkey_mobile(phone)
+        mobile = self._authkey_mobile(farmer.phone)
         if settings.authkey_sms_sender:
             result = client.send_voice_with_sms_fallback(
                 mobile=mobile,
@@ -129,7 +134,9 @@ class AlertDeliveryService:
                 voice=message,
                 dry_run=not settings.authkey_send_enabled,
             )
-        return self._from_authkey("voice_call", result)
+        delivery = self._from_authkey("voice_call", result)
+        self._record_delivery_audit(farmer, "voice_call", delivery, {"countryCode": settings.authkey_test_country_code})
+        return delivery
 
     def _from_authkey(self, channel: str, result: AuthkeyResult) -> ChannelDeliveryResult:
         if result.dry_run:
@@ -195,6 +202,36 @@ class AlertDeliveryService:
         for token, replacement in replacements.items():
             value = value.replace(token, replacement)
         return value
+
+    def _record_delivery_audit(
+        self,
+        farmer: FarmerResponse,
+        channel: str,
+        result: ChannelDeliveryResult,
+        extra_request: dict[str, str | bool | None] | None = None,
+    ) -> None:
+        ServiceAuditLogService().record(
+            farmer_id=farmer.id,
+            channel=channel,
+            service="channel_delivery",
+            operation=result.operation or f"send_{channel}",
+            provider=result.provider,
+            status_code=(result.metadata or {}).get("httpStatus"),
+            success=result.status in {"sent", "delivered", "queued", "accepted", "sending", "scheduled", "dry_run"},
+            request_body={
+                "phone": farmer.phone,
+                "channel": channel,
+                "dryRun": result.dry_run,
+                **(extra_request or {}),
+            },
+            response_body={
+                "status": result.status,
+                "sent": result.sent,
+                "providerMessageId": result.provider_message_id,
+                "accepted": (result.metadata or {}).get("accepted"),
+            },
+            error=result.error,
+        )
 
     def _overall_status(self, results: list[ChannelDeliveryResult]) -> str:
         if any(result.sent for result in results):
