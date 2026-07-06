@@ -780,6 +780,7 @@ class ConversationLogResponse(BaseModel):
 class ServiceAuditLog(BaseModel):
     id: str = Field(default_factory=lambda: f"audit_{uuid4().hex[:10]}")
     farmer_id: str | None = None
+    farmer_phone: str | None = None
     channel: str | None = None
     service: str
     operation: str

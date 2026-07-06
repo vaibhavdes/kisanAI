@@ -36,6 +36,7 @@ from app.services.bigquery_ingestion_service import PublicDataIngestionService
 from app.services.bigquery_public_data_service import BigQueryPublicDataService
 from app.services.dialogflow_channel_service import DialogflowChannelResult
 from app.services.regional_cache_policy import RegionalCachePolicy
+from app.services.service_audit_log_service import ServiceAuditLogService
 from app.services.twilio_whatsapp_service import TwilioWhatsAppService
 from app.services.weather_context_service import WeatherContextService
 from app.services.vision_ocr_service import VisionOcrService, VisionProviderUnavailable
@@ -460,6 +461,25 @@ def test_provider_audit_endpoint_lists_service_logs() -> None:
     response = client.get("/api/v1/providers/audit?limit=10")
     assert response.status_code == 200
     assert "logs" in response.json()
+
+
+def test_provider_audit_includes_farmer_phone() -> None:
+    farmer_id = create_demo_farmer()
+    ServiceAuditLogService().record(
+        farmer_id=farmer_id,
+        channel="whatsapp",
+        service="llm_advisory",
+        operation="generate_farmer_reply",
+        provider="vertex_ai",
+        success=True,
+        request_body={"message": "weather"},
+    )
+
+    response = client.get("/api/v1/providers/audit?limit=10")
+    assert response.status_code == 200
+    log = response.json()["logs"][0]
+    assert log["farmer_id"] == farmer_id
+    assert log["farmer_phone"] == "919999999999"
 
 
 def test_dialogflow_stale_keyword_menu_is_ignored(monkeypatch) -> None:
@@ -2120,6 +2140,12 @@ def test_crop_photo_diagnosis_uses_vision_and_creates_expert_ticket(monkeypatch)
 
 def test_expert_ticket_update_logs_farmer_notification(monkeypatch) -> None:
     farmer_id = create_demo_farmer()
+    deliveries = []
+
+    def fake_deliver(self, farmer, payload):
+        deliveries.append((farmer, payload))
+
+    monkeypatch.setattr("app.services.alert_delivery_service.AlertDeliveryService.deliver", fake_deliver)
     diagnosis_response = client.post(
         "/api/v1/diagnosis/log",
         json={
@@ -2150,6 +2176,12 @@ def test_expert_ticket_update_logs_farmer_notification(monkeypatch) -> None:
     assert body["assigned_expert"] == "Dr. Rao"
     assert body["expert_notes"] == ["Share one close leaf photo before spraying."]
     assert "Your expert ticket" in body["farmer_notification"]
+    assert len(deliveries) == 1
+    delivered_farmer, delivery_payload = deliveries[0]
+    assert delivered_farmer.id == farmer_id
+    assert delivery_payload.requires_whatsapp_template is True
+    assert delivery_payload.alert_plan.channels == ["whatsapp", "voice_call"]
+    assert delivery_payload.message == body["farmer_notification"]
 
     tickets_response = client.get(f"/api/v1/expert/tickets/{farmer_id}")
     assert tickets_response.status_code == 200

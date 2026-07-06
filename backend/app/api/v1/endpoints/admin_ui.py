@@ -501,6 +501,7 @@ ADMIN_HTML = """<!doctype html>
         <div class="card">
           <div><strong>${log.service}</strong> · ${log.operation} · ${log.provider || '-'}</div>
           <div class="mono">${log.success ? 'ok' : 'failed'} · status ${log.status_code || '-'} · ${log.duration_ms || 0} ms · ${log.channel || '-'}</div>
+          <div class="mono">Farmer: ${log.farmer_phone || '-'} · ${log.farmer_id || '-'}</div>
           ${log.error ? `<div style="color: var(--bad);">${log.error}</div>` : ''}
           <pre>${JSON.stringify({ request: log.request_body, response: log.response_body }, null, 2)}</pre>
         </div>

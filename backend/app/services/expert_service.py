@@ -2,6 +2,9 @@ from datetime import UTC, datetime
 
 from app.core.config import settings
 from app.models.schemas import (
+    AlertDeliveryRequest,
+    AlertPlan,
+    AlertPriority,
     ConversationMessage,
     ConversationRole,
     DiagnosisRequest,
@@ -11,6 +14,7 @@ from app.models.schemas import (
     FarmerResponse,
 )
 from app.repositories.store import store
+from app.services.alert_delivery_service import AlertDeliveryService
 
 
 class ExpertService:
@@ -47,6 +51,7 @@ class ExpertService:
             message = payload.farmer_message or self._farmer_notification(updated, payload.expert_note)
             updated = ExpertTicket(**{**updated.model_dump(), "farmer_notification": message})
             self._log_farmer_notification(updated, message)
+            self._deliver_farmer_notification(updated, message)
 
         return store.save_ticket(updated)
 
@@ -76,4 +81,24 @@ class ExpertService:
                     "assigned_center": ticket.assigned_center,
                 },
             )
+        )
+
+    def _deliver_farmer_notification(self, ticket: ExpertTicket, message: str) -> None:
+        farmer = store.get_farmer(ticket.farmer_id)
+        if not farmer:
+            return
+        AlertDeliveryService().deliver(
+            farmer,
+            AlertDeliveryRequest(
+                farmer_id=farmer.id,
+                message=message,
+                language=farmer.language,
+                requires_whatsapp_template=True,
+                alert_plan=AlertPlan(
+                    priority=AlertPriority.high,
+                    channels=["whatsapp", "voice_call"],
+                    reason=f"Expert ticket {ticket.id} status update.",
+                    call_required=True,
+                ),
+            ),
         )

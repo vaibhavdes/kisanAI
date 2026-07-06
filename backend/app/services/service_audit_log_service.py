@@ -24,9 +24,14 @@ class ServiceAuditLogService:
         response_body: dict[str, Any] | None = None,
         error: str | None = None,
     ) -> ServiceAuditLog:
+        farmer_phone = None
+        if farmer_id:
+            farmer = store.get_farmer(farmer_id)
+            farmer_phone = farmer.phone if farmer else None
         return store.save_service_audit_log(
             ServiceAuditLog(
                 farmer_id=farmer_id,
+                farmer_phone=farmer_phone,
                 channel=channel,
                 service=service,
                 operation=operation,
