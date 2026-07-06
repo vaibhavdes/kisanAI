@@ -150,6 +150,7 @@ def test_admin_dashboard_serves_provider_switch_ui() -> None:
     assert "/api/v1/alerts/schedule" in response.text
     assert "Send Test Alert" in response.text
     assert "/api/v1/alerts/run-daily" in response.text
+    assert "/api/v1/providers/audit?limit=15" in response.text
     assert "7-day rainfall mm" not in response.text
     assert "Create Demo Farmer" not in response.text
     assert "/api/v1/expert/tickets" in response.text

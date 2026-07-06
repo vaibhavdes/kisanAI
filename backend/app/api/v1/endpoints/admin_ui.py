@@ -489,7 +489,7 @@ ADMIN_HTML = """<!doctype html>
     }
 
     async function loadAuditLogs() {
-      const response = await fetch('/api/v1/providers/audit?limit=80');
+      const response = await fetch('/api/v1/providers/audit?limit=15');
       const data = await response.json();
       const logs = data.logs || [];
       const container = document.getElementById('auditLogs');
