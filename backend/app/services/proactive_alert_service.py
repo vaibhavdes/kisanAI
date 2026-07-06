@@ -115,8 +115,8 @@ class ProactiveAlertService:
         )
         alert_plan = AlertPlan(
             priority=alert_plan.priority,
-            channels=["whatsapp", "voice_call"],
-            reason=f"Morning weather alert for {crop}; WhatsApp plus Authkey voice required.",
+            channels=["whatsapp", "voice_call", "sms"],
+            reason=f"Morning weather alert for {crop}; WhatsApp plus Authkey voice and SMS when configured.",
             call_required=True,
         )
         if PRIORITY_RANK[alert_plan.priority] < PRIORITY_RANK[payload.min_priority]:

@@ -192,7 +192,7 @@ ADMIN_HTML = """<!doctype html>
     <section>
       <div class="section-head">
         <h2>Scheduled Alerts</h2>
-        <button class="secondary" id="seedFarmerBtn">Create Demo Farmer</button>
+        <span class="status">Enabled/disabled and frequency are used by the daily scheduler.</span>
       </div>
       <div class="content stack">
         <div class="row">
@@ -226,48 +226,16 @@ ADMIN_HTML = """<!doctype html>
           <div>
             <label for="alertKind">Alert Type</label>
             <select id="alertKind">
-              <option value="weather">Morning weather + crop advisory</option>
-              <option value="satellite">Satellite farm health WhatsApp</option>
+              <option value="weather">Daily weather + crop advisory</option>
+              <option value="satellite">Satellite farm health update</option>
             </select>
           </div>
           <div>
-            <label for="scenarioSelect">Scenario</label>
-            <select id="scenarioSelect">
-              <option value="dry_spell_urgent">Dry spell / urgent call + SMS</option>
-              <option value="heat_stress">Heat stress / high priority</option>
-              <option value="normal_skip">Normal weather / likely skipped</option>
-            </select>
-          </div>
-          <div>
-            <label for="alertCrop">Crop</label>
-            <input id="alertCrop" type="text" value="jowar">
-          </div>
-          <div>
-            <label><input id="respectFrequency" type="checkbox"> respect frequency</label>
-          </div>
-          <div>
-            <button id="runAlertBtn">Run Alert Now</button>
-          </div>
-          <div>
-            <button class="secondary" id="sendTestAlertBtn">Send Test Alert</button>
+            <button id="sendTestAlertBtn">Send Test Alert</button>
           </div>
         </div>
-        <div class="row">
-          <div>
-            <label for="rainfallInput">7-day rainfall mm</label>
-            <input id="rainfallInput" type="text" value="0,0,0,0,0,0,1">
-          </div>
-          <div>
-            <label for="moistureInput">Soil moisture</label>
-            <input id="moistureInput" type="text" value="0.12">
-          </div>
-          <div>
-            <label for="tempInput">Temperature C</label>
-            <input id="tempInput" type="text" value="37">
-          </div>
-        </div>
-        <div class="status">Weather alerts send WhatsApp through Twilio plus voice through Authkey. Satellite alerts are WhatsApp-only and need a Twilio approved template outside the 24-hour session window. Test alert bypasses frequency and dedupe for the selected farmer.</div>
-        <pre id="alertOutput">No simulation run yet.</pre>
+        <div class="status">Test alert uses only the selected farmer's saved location, active crop and provider data. Weather sends WhatsApp, one Authkey voice call and SMS if configured. Satellite sends WhatsApp only.</div>
+        <pre id="alertOutput">No alert sent yet.</pre>
       </div>
     </section>
     <section>
@@ -441,68 +409,19 @@ ADMIN_HTML = """<!doctype html>
       }, null, 2);
     }
 
-    async function createDemoFarmer() {
-      const response = await fetch('/api/v1/farmers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: 'Demo Farmer',
-          phone: '+919970983794',
-          language: 'hi-IN',
-          village: 'Rahuri',
-          district: 'Ahilyanagar',
-          state: 'Maharashtra',
-          farm: {
-            area_acres: 2,
-            soil_type: 'black',
-            soil_ph: 6.8,
-            groundwater_depth_m: 18,
-            latitude: 19.3906,
-            longitude: 74.6496
-          }
-        })
-      });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.detail || 'Could not create demo farmer');
-      }
-      await loadFarmers();
-      showBanner('Demo farmer ready');
-    }
-
-    function applyScenario() {
-      const scenario = document.getElementById('scenarioSelect').value;
-      const presets = {
-        dry_spell_urgent: { rain: '0,0,0,0,0,0,1', moisture: '0.12', temp: '37' },
-        heat_stress: { rain: '0,1,0,0,0,1,0', moisture: '0.16', temp: '39' },
-        normal_skip: { rain: '4,3,2,0,1,3,5', moisture: '0.28', temp: '30' }
-      };
-      const preset = presets[scenario];
-      document.getElementById('rainfallInput').value = preset.rain;
-      document.getElementById('moistureInput').value = preset.moisture;
-      document.getElementById('tempInput').value = preset.temp;
-    }
-
-    async function runAlertSimulation(options = {}) {
+    async function sendSelectedFarmerAlert() {
       const farmerId = document.getElementById('farmerSelect').value;
       if (!farmerId) {
-        throw new Error('Create or select a farmer first');
+        throw new Error('Select a registered farmer first');
       }
-      const rainfall = document.getElementById('rainfallInput').value
-        .split(',')
-        .map(value => Number(value.trim()))
-        .filter(value => Number.isFinite(value));
       const payload = {
         kind: document.getElementById('alertKind').value,
         farmer_ids: [farmerId],
-        crop: document.getElementById('alertCrop').value || 'crop',
+        crop: 'crop',
         min_priority: 'low',
-        rainfall_forecast_mm: rainfall,
-        soil_moisture: Number(document.getElementById('moistureInput').value),
-        temperature_c: Number(document.getElementById('tempInput').value),
-        respect_frequency: options.test ? false : document.getElementById('respectFrequency').checked,
+        respect_frequency: false,
         dedupe: false,
-        idempotency_key: `${options.test ? 'admin-test' : 'admin-demo'}-${Date.now()}`
+        idempotency_key: `admin-test-${Date.now()}`
       };
       const response = await fetch('/api/v1/alerts/run-daily', {
         method: 'POST',
@@ -517,7 +436,7 @@ ADMIN_HTML = """<!doctype html>
         summary: summarizeAlertRun(data),
         raw: data
       }, null, 2);
-      showBanner(options.test ? 'Test alert submitted' : 'Alert run completed');
+      showBanner('Test alert submitted for selected farmer');
     }
 
     function summarizeAlertRun(data) {
@@ -656,10 +575,7 @@ ADMIN_HTML = """<!doctype html>
     document.getElementById('refreshTicketsBtn').addEventListener('click', () => loadTickets().catch(error => showBanner(error.message, true)));
     document.getElementById('refreshFarmersBtn').addEventListener('click', () => loadFarmers().catch(error => showBanner(error.message, true)));
     document.getElementById('refreshAuditBtn').addEventListener('click', () => loadAuditLogs().catch(error => showBanner(error.message, true)));
-    document.getElementById('seedFarmerBtn').addEventListener('click', () => createDemoFarmer().catch(error => showBanner(error.message, true)));
-    document.getElementById('scenarioSelect').addEventListener('change', applyScenario);
-    document.getElementById('runAlertBtn').addEventListener('click', () => runAlertSimulation().catch(error => showBanner(error.message, true)));
-    document.getElementById('sendTestAlertBtn').addEventListener('click', () => runAlertSimulation({ test: true }).catch(error => showBanner(error.message, true)));
+    document.getElementById('sendTestAlertBtn').addEventListener('click', () => sendSelectedFarmerAlert().catch(error => showBanner(error.message, true)));
     document.getElementById('tickets').addEventListener('click', event => {
       if (event.target && event.target.dataset.action === 'updateTicket') {
         updateTicket(event.target.closest('.card')).catch(error => showBanner(error.message, true));

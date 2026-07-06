@@ -14,6 +14,7 @@ from app.models.schemas import (
 from app.repositories.store import store
 from app.services.providers.authkey_client import AuthkeyClient, AuthkeyResult
 from app.services.twilio_whatsapp_service import TwilioWhatsAppService
+from app.utils.phone import normalize_phone
 
 
 class AlertDeliveryService:
@@ -93,7 +94,7 @@ class AlertDeliveryService:
             return ChannelDeliveryResult(channel="sms", provider="authkey", status="skipped_no_sender")
 
         result = AuthkeyClient(settings.authkey_api_key).send_sms(
-            mobile=phone,
+            mobile=self._authkey_mobile(phone),
             country_code=settings.authkey_test_country_code,
             sms=message,
             sender=settings.authkey_sms_sender,
@@ -111,9 +112,10 @@ class AlertDeliveryService:
             return ChannelDeliveryResult(channel="voice_call", provider="authkey", status="skipped_no_authkey")
 
         client = AuthkeyClient(settings.authkey_api_key)
+        mobile = self._authkey_mobile(phone)
         if settings.authkey_sms_sender:
             result = client.send_voice_with_sms_fallback(
-                mobile=phone,
+                mobile=mobile,
                 country_code=settings.authkey_test_country_code,
                 voice=message,
                 fallback_sms=message,
@@ -122,7 +124,7 @@ class AlertDeliveryService:
             )
         else:
             result = client.send_voice(
-                mobile=phone,
+                mobile=mobile,
                 country_code=settings.authkey_test_country_code,
                 voice=message,
                 dry_run=not settings.authkey_send_enabled,
@@ -151,6 +153,13 @@ class AlertDeliveryService:
             },
             error=result.error,
         )
+
+    def _authkey_mobile(self, phone: str) -> str:
+        normalized = normalize_phone(phone, settings.authkey_test_country_code)
+        country_code = settings.authkey_test_country_code.strip("+")
+        if country_code and normalized.startswith(country_code) and len(normalized) > 10:
+            return normalized[len(country_code):]
+        return normalized
 
     def _twilio_content_variables(
         self,

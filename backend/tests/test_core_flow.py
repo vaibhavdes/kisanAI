@@ -150,6 +150,8 @@ def test_admin_dashboard_serves_provider_switch_ui() -> None:
     assert "/api/v1/alerts/schedule" in response.text
     assert "Send Test Alert" in response.text
     assert "/api/v1/alerts/run-daily" in response.text
+    assert "7-day rainfall mm" not in response.text
+    assert "Create Demo Farmer" not in response.text
     assert "/api/v1/expert/tickets" in response.text
     assert 'sms_voice: ["authkey"]' in response.text
 
@@ -1328,7 +1330,7 @@ def test_daily_alert_runner_generates_and_delivers_high_risk_alert(monkeypatch) 
     assert result["risk_level"] == "critical"
     assert result["priority"] == "urgent"
     assert result["delivery"]["overall_status"] == "dry_run"
-    assert {item["channel"] for item in result["delivery"]["results"]} == {"whatsapp", "voice_call"}
+    assert {item["channel"] for item in result["delivery"]["results"]} == {"whatsapp", "voice_call", "sms"}
 
     recent = client.get(f"/api/v1/conversations/{farmer_id}")
     assert recent.status_code == 200
