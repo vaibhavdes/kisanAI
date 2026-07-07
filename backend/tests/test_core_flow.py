@@ -4,6 +4,8 @@ import os
 import re
 from urllib.parse import urlparse
 
+import requests
+
 os.environ["DATA_STORE_PROVIDER"] = "local"
 os.environ["ENABLE_GOOGLE_INTEGRATIONS"] = "false"
 
@@ -13,6 +15,8 @@ from app.core.config import settings
 from app.main import app
 from app.models.schemas import (
     AdvisoryTestResponse,
+    AdvisoryTestRequest,
+    ChannelDeliveryResult,
     DataSignal,
     DiagnosisResult,
     GovernmentDataContextRequest,
@@ -22,7 +26,9 @@ from app.models.schemas import (
     ProviderRoute,
     RiskLevel,
     SatelliteHistoryPoint,
+    SatelliteMapPreviewResponse,
     SatelliteSignalResponse,
+    SoilCardExtractionResponse,
     DetectLanguageResponse,
     TranslateTextResponse,
     WeatherContextRequest,
@@ -35,12 +41,14 @@ from app.repositories.store import store
 from app.services.bigquery_ingestion_service import PublicDataIngestionService
 from app.services.bigquery_public_data_service import BigQueryPublicDataService
 from app.services.dialogflow_channel_service import DialogflowChannelResult
+from app.services.gemini_service import GeminiService
 from app.services.regional_cache_policy import RegionalCachePolicy
 from app.services.service_audit_log_service import ServiceAuditLogService
 from app.services.twilio_whatsapp_service import TwilioWhatsAppService
 from app.services.weather_context_service import WeatherContextService
 from app.services.vision_ocr_service import VisionOcrService, VisionProviderUnavailable
 from app.services.voice_service import VoiceProviderUnavailable, VoiceService
+from app.services.whatsapp_service import WhatsAppService
 from scripts.fetch_public_data_sources import (
     normalize_aspirational_districts,
     normalize_crop_csv,
@@ -154,6 +162,9 @@ def test_admin_dashboard_serves_provider_switch_ui() -> None:
     assert "/api/v1/providers/audit?limit=15" in response.text
     assert "7-day rainfall mm" not in response.text
     assert "Create Demo Farmer" not in response.text
+    assert "Remove User" in response.text
+    assert "Sensor Reading Injector" in response.text
+    assert "/api/v1/sensors/readings" in response.text
     assert "/api/v1/expert/tickets" in response.text
     assert 'sms_voice: ["authkey"]' in response.text
 
@@ -206,6 +217,196 @@ def test_admin_supporting_endpoints_list_farmers_and_tickets() -> None:
     )
     assert update_response.status_code == 200
     assert update_response.json()["status"] == "resolved"
+
+
+def test_farmer_create_reuses_existing_record_for_normalized_phone() -> None:
+    first_response = client.post(
+        "/api/v1/farmers",
+        json={
+            "name": "Demo Farmer",
+            "phone": "+91 90000 12121",
+            "language": "hi-IN",
+            "village": "Loni Kh.",
+            "district": "Ahilyanagar",
+            "state": "Maharashtra",
+            "farm": {
+                "area_acres": 1,
+                "soil_type": "black",
+                "latitude": 19.1,
+                "longitude": 74.7,
+            },
+        },
+    )
+    assert first_response.status_code == 200
+    first_farmer = first_response.json()
+
+    second_response = client.post(
+        "/api/v1/farmers",
+        json={
+            "name": "Vaibhav",
+            "phone": "9000012121",
+            "language": "mr-IN",
+            "village": "Loni Kh.",
+            "taluka": "Ahilyanagar",
+            "district": "Ahilyanagar",
+            "state": "Maharashtra",
+            "pincode": "413736",
+            "farm": {
+                "area_acres": 2,
+                "soil_type": "black",
+                "latitude": 19.2,
+                "longitude": 74.8,
+            },
+        },
+    )
+    assert second_response.status_code == 200
+    second_farmer = second_response.json()
+    assert second_farmer["id"] == first_farmer["id"]
+    assert second_farmer["phone"] == "919000012121"
+    assert second_farmer["name"] == "Vaibhav"
+    assert second_farmer["language"] == "mr-IN"
+
+    identify_response = client.post(
+        "/api/v1/farmers/identify",
+        json={"phone": "91 90000 12121", "channel": "whatsapp"},
+    )
+    assert identify_response.status_code == 200
+    assert identify_response.json()["farmer"]["id"] == first_farmer["id"]
+    assert identify_response.json()["is_new"] is False
+
+    farmers_response = client.get("/api/v1/farmers?limit=100")
+    matching = [farmer for farmer in farmers_response.json() if farmer["phone"] == "919000012121"]
+    assert len(matching) == 1
+
+
+def test_admin_can_delete_farmer_and_farmer_context() -> None:
+    farmer_id = create_demo_farmer()
+    diagnosis_response = client.post(
+        "/api/v1/diagnosis/log",
+        json={
+            "farmer_id": farmer_id,
+            "crop": "tomato",
+            "symptoms_text": "leaf spots",
+            "language": "en-IN",
+        },
+    )
+    assert diagnosis_response.status_code == 200
+
+    chat_response = client.post(
+        "/api/v1/chat/message",
+        json={"from_phone": "9999999999", "text": "weather", "language": "en-IN"},
+    )
+    assert chat_response.status_code == 200
+
+    delete_response = client.delete(f"/api/v1/farmers/{farmer_id}")
+    assert delete_response.status_code == 200
+    assert delete_response.json()["deleted"] is True
+
+    farmers_response = client.get("/api/v1/farmers")
+    assert all(farmer["id"] != farmer_id for farmer in farmers_response.json())
+
+    tickets_response = client.get(f"/api/v1/expert/tickets/{farmer_id}")
+    assert tickets_response.status_code == 200
+    assert tickets_response.json() == []
+
+    identify_response = client.post(
+        "/api/v1/farmers/identify",
+        json={"phone": "+91 9999999999", "channel": "whatsapp"},
+    )
+    assert identify_response.status_code == 200
+    assert identify_response.json()["is_new"] is True
+    assert identify_response.json()["farmer"]["id"] != farmer_id
+
+    missing_response = client.delete(f"/api/v1/farmers/{farmer_id}")
+    assert missing_response.status_code == 404
+
+
+def test_sensor_reading_endpoint_persists_and_irrigation_uses_latest_sensor() -> None:
+    farmer_id = create_demo_farmer()
+    sensor_response = client.post(
+        "/api/v1/sensors/readings",
+        json={
+            "farmer_id": farmer_id,
+            "sensor_id": "demo_sensor_01",
+            "source": "manual_demo",
+            "device_type": "soil_moisture_sensor",
+            "timestamp": "2026-07-07T15:30:00+05:30",
+            "readings": {
+                "soil_moisture": 0.16,
+                "soil_temperature_c": 29.4,
+                "air_temperature_c": 34.1,
+                "humidity_percent": 62,
+                "rainfall_mm": 0,
+                "battery_percent": 78,
+            },
+        },
+    )
+
+    assert sensor_response.status_code == 200
+    sensor_body = sensor_response.json()
+    assert sensor_body["saved"] is True
+    assert sensor_body["reading"]["soil_moisture_risk"] == "high"
+
+    advisory_response = client.post(
+        "/api/v1/advisories/dry-spell",
+        json={
+            "farmer_id": farmer_id,
+            "crop": "maize",
+            "rainfall_forecast_mm": [5, 5, 5, 5, 5, 5, 5],
+            "temperature_c": 30,
+        },
+    )
+    assert advisory_response.status_code == 200
+    advisory = advisory_response.json()
+    assert advisory["risk_level"] == "high"
+    assert advisory["sensor_id"] == "demo_sensor_01"
+    assert advisory["sensor_soil_moisture"] == 0.16
+    assert advisory["sensor_risk_level"] == "high"
+
+    farmer = store.get_farmer(farmer_id)
+    assert farmer is not None
+    water_availability, sensor_sources = WhatsAppService()._crop_water_availability(farmer)
+    assert water_availability == "low"
+    assert sensor_sources["sensor"] == "manual_demo"
+    assert sensor_sources["soilMoisture"] == 0.16
+    assert sensor_sources["waterAvailabilityFromSensor"] == "low"
+
+
+def test_live_token_reports_not_ready_when_google_disabled() -> None:
+    response = client.post("/api/v1/live/token", json={"language": "en-IN"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ready"] is False
+    assert body["model"] == settings.gemini_live_model
+
+
+def test_llm_model_fallback_runs_only_after_resource_exhausted(monkeypatch) -> None:
+    service = GeminiService()
+    monkeypatch.setattr(settings, "vertex_ai_model", "gemini-2.5-flash")
+    monkeypatch.setattr(settings, "vertex_ai_fallback_models", "gemini-2.5-flash-lite,gemini-3.1-flash-lite")
+    calls: list[str] = []
+
+    def fake_generate(*, client, model, payload, source):
+        calls.append(model)
+        if model == "gemini-2.5-flash":
+            raise RuntimeError("429 RESOURCE_EXHAUSTED")
+        return AdvisoryTestResponse(
+            source=source,
+            model=model,
+            advisory_text="Fallback model advisory.",
+            risk_level=RiskLevel.medium,
+            recommended_actions=["Check field moisture."],
+        )
+
+    monkeypatch.setattr(service, "_generate_with_client", fake_generate)
+    response = service._generate_advisory_with_model_fallback(
+        client=object(),
+        provider=ProviderName.vertex_ai,
+        payload=AdvisoryTestRequest(),
+    )
+
+    assert calls == ["gemini-2.5-flash", "gemini-2.5-flash-lite"]
+    assert response.model == "gemini-2.5-flash-lite"
 
 
 def test_low_connectivity_channels_accept_farmer_intent() -> None:
@@ -422,7 +623,23 @@ def test_crop_plan_context_shared_between_whatsapp_and_app_for_satellite(monkeyp
             note="Sentinel-2 farm signal.",
         )
 
+    def fake_map_preview(self, **kwargs):
+        return SatelliteMapPreviewResponse(
+            farmer_id=kwargs.get("farmer_id"),
+            latitude=kwargs["latitude"],
+            longitude=kwargs["longitude"],
+            geometry_type="point_buffer",
+            index=kwargs.get("index", "NDMI"),
+            meaning="Crop moisture and water-stress map",
+            map_url="https://earthengine.googleapis.com/thumb/demo.png",
+            start_date="2026-04-07",
+            end_date="2026-07-06",
+            source="earth_engine_sentinel_2_thumbnail",
+            legend={"red": "high water stress", "yellow": "medium stress", "green": "healthy moisture"},
+        )
+
     monkeypatch.setattr("app.services.weather_service.WeatherService._satellite_signal", fake_signal)
+    monkeypatch.setattr("app.services.earth_engine_service.EarthEngineService.get_farm_map_preview", fake_map_preview)
 
     planted = client.post(
         "/api/v1/whatsapp/webhook",
@@ -451,10 +668,99 @@ def test_crop_plan_context_shared_between_whatsapp_and_app_for_satellite(monkeyp
     body = satellite.json()
     assert body["intent"] == "satellite_advisory"
     assert body["data_sources"]["satellite"] == "earth_engine_sentinel_2"
+    assert body["data_sources"]["satelliteMap"] == "earth_engine_sentinel_2_thumbnail"
     assert body["data_sources"]["ndvi"] == 0.44
+    assert body["media_url"] == "https://earthengine.googleapis.com/thumb/demo.png"
     assert "2026-01-01" in body["reply"]
     assert "CSH-22" in body["reply"]
+    assert "Crop growth:" in body["reply"]
+    assert "Advice:" in body["reply"]
+    assert "Technical details:" in body["reply"]
     assert "NDVI 0.44" in body["reply"]
+    assert "Google Earth Engine / Sentinel-2" in body["reply"]
+
+    marathi = client.post(
+        "/api/v1/chat/message",
+        json={
+            "from_phone": "9999999999",
+            "text": "माझ्या शेताची वाढ ठीक आहे का?",
+            "language": "mr-IN",
+        },
+    )
+    assert marathi.status_code == 200
+    marathi_body = marathi.json()
+    assert marathi_body["intent"] == "satellite_advisory"
+    assert "पीक वाढ:" in marathi_body["reply"]
+    assert "सल्ला:" in marathi_body["reply"]
+    assert "तांत्रिक माहिती:" in marathi_body["reply"]
+
+
+def test_ai_refines_practical_field_question_to_satellite_intent(monkeypatch) -> None:
+    farmer_id = create_demo_farmer()
+    monkeypatch.setattr(settings, "enable_google_integrations", True)
+
+    def fake_classify(self, **kwargs):
+        assert kwargs["local_intent"] == "general_advisory"
+        return "satellite_advisory", {"intentAiSource": "vertex_ai", "intentAiModel": "gemini-2.5-flash"}
+
+    def fake_signal(self, farmer):
+        return SatelliteSignalResponse(
+            farmer_id=farmer.id,
+            latitude=farmer.farm.latitude,
+            longitude=farmer.farm.longitude,
+            geometry_type="point_buffer",
+            buffer_m=250,
+            start_date="2026-04-07",
+            end_date="2026-07-06",
+            source="earth_engine_sentinel_2",
+            ndvi=0.39,
+            ndwi=-0.11,
+            ndmi=0.02,
+            evi=0.31,
+            ndre=0.22,
+            water_stress="medium",
+            vegetation_status="moderate",
+            moisture_status="dry",
+            chlorophyll_status="medium",
+            note="Sentinel-2 farm signal.",
+        )
+
+    def fake_map_preview(self, **kwargs):
+        return SatelliteMapPreviewResponse(
+            farmer_id=kwargs.get("farmer_id"),
+            latitude=kwargs["latitude"],
+            longitude=kwargs["longitude"],
+            geometry_type="point_buffer",
+            index=kwargs.get("index", "NDMI"),
+            meaning="Crop moisture and water-stress map",
+            map_url="https://earthengine.googleapis.com/thumb/demo.png",
+            start_date="2026-04-07",
+            end_date="2026-07-06",
+            source="earth_engine_sentinel_2_thumbnail",
+            legend={"red": "high water stress", "yellow": "medium stress", "green": "healthy moisture"},
+        )
+
+    monkeypatch.setattr("app.services.gemini_service.GeminiService.classify_farmer_intent", fake_classify)
+    monkeypatch.setattr("app.services.weather_service.WeatherService._satellite_signal", fake_signal)
+    monkeypatch.setattr("app.services.earth_engine_service.EarthEngineService.get_farm_map_preview", fake_map_preview)
+
+    response = client.post(
+        "/api/v1/chat/message",
+        json={
+            "from_phone": "9999999999",
+            "text": "Can you check my field condition?",
+            "language": "en-IN",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["farmer_id"] == farmer_id
+    assert body["intent"] == "satellite_advisory"
+    assert body["data_sources"]["intentAiSource"] == "vertex_ai"
+    assert body["media_url"] == "https://earthengine.googleapis.com/thumb/demo.png"
+    assert "Technical details:" in body["reply"]
+    assert "Google Earth Engine / Sentinel-2" in body["reply"]
 
 
 def test_provider_audit_endpoint_lists_service_logs() -> None:
@@ -725,6 +1031,7 @@ def test_twilio_whatsapp_text_location_and_media_webhooks() -> None:
 
 def test_twilio_whatsapp_audio_voice_note_returns_twiml_media(monkeypatch) -> None:
     audio_url = "https://api.twilio.com/2010-04-01/Accounts/AC123/Messages/MM123/Media/ME123"
+    sent_media: list[dict[str, str | None]] = []
 
     def fake_transcribe(self, payload):
         assert payload.audio_uri == audio_url
@@ -749,8 +1056,22 @@ def test_twilio_whatsapp_audio_voice_note_returns_twiml_media(monkeypatch) -> No
     monkeypatch.setattr(settings, "twilio_validate_webhooks", False)
     monkeypatch.setattr(settings, "twilio_media_bucket", None)
     monkeypatch.setattr(settings, "storage_bucket", None)
+    monkeypatch.setattr(settings, "twilio_enable_live_send", True)
     monkeypatch.setattr("app.services.voice_service.VoiceService.transcribe", fake_transcribe)
     monkeypatch.setattr("app.services.voice_service.VoiceService.speak", fake_speak)
+
+    def fake_send_whatsapp(self, *, to_phone, body, media_url=None, content_sid=None, content_variables=None, persistent_action=None, dry_run=True):
+        sent_media.append({"to": to_phone, "body": body, "media_url": media_url})
+        return ChannelDeliveryResult(
+            channel="whatsapp",
+            provider="twilio",
+            operation="send_twilio_whatsapp_media",
+            status="queued",
+            provider_message_id="SM-FOLLOWUP-1",
+            metadata={"accepted": True},
+        )
+
+    monkeypatch.setattr("app.services.twilio_whatsapp_service.TwilioWhatsAppService.send_whatsapp", fake_send_whatsapp)
 
     response = client.post(
         "/api/v1/twilio/whatsapp",
@@ -767,11 +1088,10 @@ def test_twilio_whatsapp_audio_voice_note_returns_twiml_media(monkeypatch) -> No
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/xml")
     assert "farm location or pincode" in response.text
-    assert response.text.count("<Message") == 2
-    assert re.search(r"<Message[^>]*>.*farm location or pincode.*</Message><Message", response.text, flags=re.S)
-    media_match = re.search(r"<Media>([^<]+)</Media>", response.text)
-    assert media_match is not None
-    media_url = urlparse(media_match.group(1))
+    assert response.text.count("<Message") == 1
+    assert "<Media>" not in response.text
+    assert sent_media and sent_media[0]["body"] == "Voice reply"
+    media_url = urlparse(str(sent_media[0]["media_url"]))
     media_response = client.get(f"{media_url.path}?{media_url.query}")
     assert media_response.status_code == 200
     assert media_response.content == b"reply audio"
@@ -811,7 +1131,9 @@ def test_twilio_whatsapp_document_media_gets_clear_response() -> None:
     assert messages[0].metadata["has_media"] is True
 
 
-def test_twilio_sms_and_voice_webhooks_return_twiml() -> None:
+def test_twilio_sms_and_voice_webhooks_return_twiml(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "twilio_validate_webhooks", False)
+
     sms_response = client.post(
         "/api/v1/twilio/sms",
         data={
@@ -974,6 +1296,61 @@ def test_whatsapp_crop_photo_creates_diagnosis_ticket() -> None:
     tickets = client.get(f"/api/v1/expert/tickets/{body['farmer_id']}")
     assert tickets.status_code == 200
     assert len(tickets.json()) == 1
+
+
+def test_whatsapp_soil_card_image_extracts_and_persists(monkeypatch) -> None:
+    def fake_extract(self, payload):
+        assert payload.farmer_id
+        assert payload.image_base64 == base64.b64encode(b"soil-card").decode("ascii")
+        return SoilCardExtractionResponse(
+            source="vertex_ai_vision",
+            model="gemini-2.5-flash",
+            ph=6.6,
+            organic_carbon=0.54,
+            nitrogen="medium",
+            phosphorus=18,
+            potassium="high",
+            confidence=0.89,
+            needs_manual_review=False,
+            raw_text="Soil health card pH 6.6 OC 0.54",
+            persisted=True,
+            farmer=store.get_farmer(payload.farmer_id),
+        )
+
+    monkeypatch.setattr("app.services.soil_card_vision_service.SoilCardVisionService.extract", fake_extract)
+
+    response = client.post(
+        "/api/v1/whatsapp/webhook",
+        json={
+            "from_phone": "+91 99999 44444",
+            "text": "soil health card",
+            "media_base64": base64.b64encode(b"soil-card").decode("ascii"),
+            "media_mime_type": "image/jpeg",
+            "media_type": "image",
+            "language": "en-IN",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["intent"] == "soil_card_extraction"
+    assert body["data_sources"]["soilCardPersisted"] is True
+    assert "pH 6.6" in body["reply"]
+    assert "Ticket:" not in body["reply"]
+
+
+def test_crop_recommendation_intent_wins_over_planning_word() -> None:
+    response = client.post(
+        "/api/v1/chat/message",
+        json={
+            "from_phone": "+91 99999 33333",
+            "text": "I am planning new crop recommend me",
+            "language": "en-IN",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["intent"] == "crop_recommendation"
 
 
 def test_alert_delivery_uses_configured_channels_in_dry_run(monkeypatch) -> None:
@@ -1197,11 +1574,60 @@ def test_twilio_live_queued_send_is_accepted_not_delivered(monkeypatch) -> None:
     assert result["metadata"]["accepted"] is True
 
 
-def test_twilio_response_audio_skips_memory_media_in_production_when_bucket_publish_fails(monkeypatch) -> None:
+def test_twilio_live_quota_failure_preserves_provider_error(monkeypatch) -> None:
+    farmer_id = create_demo_farmer()
+    monkeypatch.setattr(settings, "twilio_enable_live_send", True)
+    monkeypatch.setattr(settings, "twilio_account_sid", "AC123")
+    monkeypatch.setattr(settings, "twilio_auth_token", "token")
+    monkeypatch.setattr(settings, "twilio_content_sid", None)
+
+    class FakeTwilioResponse:
+        status_code = 429
+        text = "Account AC123 exceeded the 50 daily messages limit"
+
+        def raise_for_status(self) -> None:
+            raise requests.HTTPError("429 Client Error", response=self)
+
+    def fake_post(*args, **kwargs):
+        return FakeTwilioResponse()
+
+    monkeypatch.setattr("app.services.twilio_whatsapp_service.requests.post", fake_post)
+    client.patch(
+        "/api/v1/providers/config",
+        json={"routes": {"whatsapp": {"primary": "twilio", "secondary": None}}},
+    )
+
+    response = client.post(
+        "/api/v1/alerts/deliver",
+        json={
+            "farmer_id": farmer_id,
+            "message": "Weather alert test.",
+            "alert_plan": {
+                "priority": "high",
+                "channels": ["whatsapp"],
+                "reason": "Demo alert.",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    result = response.json()["results"][0]
+    assert result["status"] == "failed"
+    assert result["metadata"]["httpStatus"] == 429
+    assert "50 daily messages limit" in result["error"]
+    assert "50 daily messages limit" in result["raw_status"]
+
+
+def test_twilio_response_audio_falls_back_to_memory_media_when_bucket_publish_fails(monkeypatch) -> None:
     monkeypatch.setattr(settings, "environment", "production")
     monkeypatch.setattr(settings, "twilio_media_bucket", "reply-bucket")
     monkeypatch.setattr(settings, "storage_bucket", None)
     monkeypatch.setattr(TwilioWhatsAppService, "_publish_response_media", lambda self, content, content_type, base_url: None)
+    sent_media: list[dict[str, str | None]] = []
+
+    def fake_send_whatsapp(self, *, to_phone, body, media_url=None, content_sid=None, content_variables=None, persistent_action=None, dry_run=True):
+        sent_media.append({"to": to_phone, "body": body, "media_url": media_url})
+        return ChannelDeliveryResult(channel="whatsapp", provider="twilio", operation="send_twilio_whatsapp_media", status="dry_run", dry_run=True)
 
     xml = TwilioWhatsAppService().twiml_response(
         WhatsAppWebhookResponse(
@@ -1215,6 +1641,21 @@ def test_twilio_response_audio_skips_memory_media_in_production_when_bucket_publ
     )
     assert "Audio reply" in xml
     assert "<Media>" not in xml
+    assert "action=" not in xml
+    monkeypatch.setattr("app.services.twilio_whatsapp_service.TwilioWhatsAppService.send_whatsapp", fake_send_whatsapp)
+    results = TwilioWhatsAppService().send_response_media_followups(
+        to_phone="+919970983794",
+        response=WhatsAppWebhookResponse(
+            intent="voice_message",
+            reply="Audio reply",
+            response_audio_base64=base64.b64encode(b"reply audio").decode("ascii"),
+            response_audio_content_type="audio/mpeg",
+        ),
+        base_url="https://kisan.example.com",
+        dry_run=True,
+    )
+    assert results[0].status == "dry_run"
+    assert sent_media[0]["media_url"].startswith("https://kisan.example.com/api/v1/twilio/media/")
 
 
 def test_twilio_response_audio_uses_published_cloud_run_media_url_in_production(monkeypatch) -> None:
@@ -1226,6 +1667,11 @@ def test_twilio_response_audio_uses_published_cloud_run_media_url_in_production(
         "_publish_response_media",
         lambda self, content, content_type, base_url: f"{base_url.rstrip('/')}/api/v1/twilio/media/gcs/twilio/replies/reply.mp3",
     )
+    sent_media: list[dict[str, str | None]] = []
+
+    def fake_send_whatsapp(self, *, to_phone, body, media_url=None, content_sid=None, content_variables=None, persistent_action=None, dry_run=True):
+        sent_media.append({"to": to_phone, "body": body, "media_url": media_url})
+        return ChannelDeliveryResult(channel="whatsapp", provider="twilio", operation="send_twilio_whatsapp_media", status="dry_run", dry_run=True)
 
     xml = TwilioWhatsAppService().twiml_response(
         WhatsAppWebhookResponse(
@@ -1239,7 +1685,70 @@ def test_twilio_response_audio_uses_published_cloud_run_media_url_in_production(
     )
 
     assert "Text reply" in xml
-    assert "<Media>https://kisan.example.com/api/v1/twilio/media/gcs/twilio/replies/reply.mp3</Media>" in xml
+    assert "<Media>" not in xml
+    monkeypatch.setattr("app.services.twilio_whatsapp_service.TwilioWhatsAppService.send_whatsapp", fake_send_whatsapp)
+    TwilioWhatsAppService().send_response_media_followups(
+        to_phone="+919970983794",
+        response=WhatsAppWebhookResponse(
+            intent="weather_query",
+            reply="Text reply",
+            response_audio_base64=base64.b64encode(b"reply audio").decode("ascii"),
+            response_audio_content_type="audio/mpeg",
+        ),
+        base_url="https://kisan.example.com",
+        dry_run=True,
+    )
+    assert sent_media[0]["media_url"] == "https://kisan.example.com/api/v1/twilio/media/gcs/twilio/replies/reply.mp3"
+
+
+def test_twilio_response_can_return_satellite_image_and_voice(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "environment", "production")
+    monkeypatch.setattr(settings, "twilio_media_bucket", "reply-bucket")
+    monkeypatch.setattr(settings, "storage_bucket", None)
+    monkeypatch.setattr(
+        TwilioWhatsAppService,
+        "_publish_response_media",
+        lambda self, content, content_type, base_url: f"{base_url.rstrip('/')}/api/v1/twilio/media/gcs/twilio/replies/reply.mp3",
+    )
+    sent_media: list[dict[str, str | None]] = []
+
+    def fake_send_whatsapp(self, *, to_phone, body, media_url=None, content_sid=None, content_variables=None, persistent_action=None, dry_run=True):
+        sent_media.append({"to": to_phone, "body": body, "media_url": media_url})
+        return ChannelDeliveryResult(channel="whatsapp", provider="twilio", operation="send_twilio_whatsapp_media", status="dry_run", dry_run=True)
+
+    xml = TwilioWhatsAppService().twiml_response(
+        WhatsAppWebhookResponse(
+            intent="satellite_advisory",
+            reply="Farm health map is ready.",
+            media_url="https://earthengine.googleapis.com/thumb/farm-map.png",
+            media_content_type="image/png",
+            response_audio_base64=base64.b64encode(b"reply audio").decode("ascii"),
+            response_audio_content_type="audio/mpeg",
+        ),
+        base_url="https://kisan.example.com",
+        status_callback_url=None,
+    )
+
+    assert "Farm health map is ready." in xml
+    assert "<Media>" not in xml
+    monkeypatch.setattr("app.services.twilio_whatsapp_service.TwilioWhatsAppService.send_whatsapp", fake_send_whatsapp)
+    TwilioWhatsAppService().send_response_media_followups(
+        to_phone="+919970983794",
+        response=WhatsAppWebhookResponse(
+            intent="satellite_advisory",
+            reply="Farm health map is ready.",
+            media_url="https://earthengine.googleapis.com/thumb/farm-map.png",
+            media_content_type="image/png",
+            response_audio_base64=base64.b64encode(b"reply audio").decode("ascii"),
+            response_audio_content_type="audio/mpeg",
+        ),
+        base_url="https://kisan.example.com",
+        dry_run=True,
+    )
+    assert [item["media_url"] for item in sent_media] == [
+        "https://earthengine.googleapis.com/thumb/farm-map.png",
+        "https://kisan.example.com/api/v1/twilio/media/gcs/twilio/replies/reply.mp3",
+    ]
 
 
 def test_twilio_status_callback_saves_whatsapp_receipt() -> None:
@@ -1458,7 +1967,9 @@ def test_alert_schedule_config_and_satellite_whatsapp_only(monkeypatch) -> None:
     assert body["generated"] == 1
     result = body["results"][0]
     assert result["priority"] == "high"
-    assert "Satellite update" in result["advisory"]
+    assert "Satellite farm health update" in result["advisory"]
+    assert "Advice:" in result["advisory"]
+    assert "Google Earth Engine / Sentinel-2" in result["advisory"]
     assert result["delivery"]["overall_status"] == "dry_run"
     assert [item["channel"] for item in result["delivery"]["results"]] == ["whatsapp"]
 
@@ -2805,7 +3316,27 @@ def test_satellite_farm_signal_accepts_farmer_profile_and_polygon(monkeypatch) -
             note="Sentinel-2 farm signal.",
         )
 
+    def fake_map_preview(self, **kwargs):
+        assert kwargs["farmer_id"] == farmer_id
+        assert kwargs["latitude"] == 16.3
+        assert kwargs["index"] == "NDMI"
+        assert len(kwargs["polygon"]) == 3
+        return SatelliteMapPreviewResponse(
+            farmer_id=kwargs["farmer_id"],
+            latitude=kwargs["latitude"],
+            longitude=kwargs["longitude"],
+            geometry_type="polygon",
+            index="NDMI",
+            meaning="Crop moisture and water-stress map",
+            map_url="https://earthengine.googleapis.com/thumb/farm-map.png",
+            start_date="2026-04-05",
+            end_date="2026-07-04",
+            source="earth_engine_sentinel_2_thumbnail",
+            legend={"red": "high water stress", "yellow": "medium stress", "green": "healthy moisture"},
+        )
+
     monkeypatch.setattr("app.services.earth_engine_service.EarthEngineService.get_farm_signal", fake_signal)
+    monkeypatch.setattr("app.services.earth_engine_service.EarthEngineService.get_farm_map_preview", fake_map_preview)
 
     response = client.post(
         "/api/v1/satellite/farm-signal",
@@ -2833,6 +3364,25 @@ def test_satellite_farm_signal_accepts_farmer_profile_and_polygon(monkeypatch) -
     assert body["chlorophyll_status"] == "good"
     assert body["history"][0]["ndvi"] == 0.42
     assert body["history"][0]["ndmi"] == 0.04
+
+    map_response = client.post(
+        "/api/v1/satellite/farm-map",
+        json={
+            "farmer_id": farmer_id,
+            "index": "NDMI",
+            "polygon": [
+                {"latitude": 16.3, "longitude": 80.4},
+                {"latitude": 16.301, "longitude": 80.4},
+                {"latitude": 16.301, "longitude": 80.401},
+            ],
+        },
+    )
+    assert map_response.status_code == 200
+    map_body = map_response.json()
+    assert map_body["source"] == "earth_engine_sentinel_2_thumbnail"
+    assert map_body["meaning"] == "Crop moisture and water-stress map"
+    assert map_body["map_url"] == "https://earthengine.googleapis.com/thumb/farm-map.png"
+    assert map_body["legend"]["red"] == "high water stress"
 
 
 def test_crop_recommendation_uses_earth_engine_farm_signal(monkeypatch) -> None:

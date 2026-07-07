@@ -10,6 +10,7 @@ from app.models.schemas import (
 from app.services.alert_priority_policy import AlertPriorityPolicy
 from app.services.earth_engine_service import EarthEngineService
 from app.services.gemini_service import AdvisoryProviderUnavailable, GeminiService
+from app.services.sensor_service import SensorService
 from app.services.weather_context_service import WeatherContextService
 from app.utils.language import phrase
 
@@ -36,7 +37,12 @@ class WeatherService:
             weather_fallback_used = weather.fallback_used
 
         dry_days = sum(1 for rain in rainfall_forecast[:7] if rain < 2)
+        latest_sensor = None
         moisture = payload.soil_moisture
+        if moisture is None:
+            latest_sensor = SensorService().latest_for_farmer(farmer.id, sensor_id=payload.sensor_id)
+            if latest_sensor is not None:
+                moisture = latest_sensor.readings.soil_moisture
         temp = temperature_c
         satellite_signal = self._satellite_signal(farmer)
 
@@ -124,6 +130,10 @@ class WeatherService:
             satellite_water_stress=satellite_signal.water_stress if satellite_signal else None,
             satellite_ndwi=satellite_signal.ndwi if satellite_signal else None,
             satellite_ndmi=satellite_signal.ndmi if satellite_signal else None,
+            sensor_id=latest_sensor.sensor_id if latest_sensor else payload.sensor_id,
+            sensor_source=latest_sensor.source if latest_sensor else None,
+            sensor_soil_moisture=moisture,
+            sensor_risk_level=SensorService().classify_soil_moisture(moisture) if moisture is not None else None,
             ai_source=ai_source,
             ai_model=ai_model,
         )

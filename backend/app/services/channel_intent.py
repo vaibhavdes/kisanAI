@@ -31,14 +31,14 @@ def detect_farmer_intent(
     if _has_any(normalized, SATELLITE_TERMS):
         return "satellite_advisory"
 
-    if _has_any(normalized, CROP_PLANNING_TERMS):
-        return "crop_planning"
     if _has_any(normalized, DIAGNOSIS_TERMS):
         return "crop_diagnosis"
     if _has_any(normalized, IRRIGATION_TERMS):
         return "irrigation_advisory"
     if _has_any(normalized, CROP_RECOMMENDATION_TERMS):
         return "crop_recommendation"
+    if _has_any(normalized, CROP_PLANNING_TERMS):
+        return "crop_planning"
 
     if is_crop_followup_text(normalized):
         return "crop_recommendation"
@@ -120,13 +120,32 @@ SATELLITE_TERMS = [
     "ndmi",
     "earth engine",
     "farm analysis",
+    "farm health",
+    "field health",
+    "health report",
     "crop growth",
+    "growth okay",
+    "growth ok",
+    "crop improve",
+    "crop improved",
+    "last week",
     "water stress",
     "सैटेलाइट",
     "उपग्रह",
+    "खेत की बढ़वार",
+    "फसल की बढ़वार",
+    "खेत का स्वास्थ्य",
+    "स्वास्थ्य रिपोर्ट",
+    "फसल सुधरी",
     "पानी तनाव",
     "सॅटेलाइट",
     "उपग्रह",
+    "शेताची वाढ",
+    "पिकाची वाढ",
+    "पीक सुधार",
+    "शेताचा आरोग्य",
+    "आरोग्य रिपोर्ट",
+    "शेताचा रिपोर्ट",
     "पाण्याचा ताण",
 ]
 

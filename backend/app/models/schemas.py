@@ -228,6 +228,31 @@ class SatelliteSignalResponse(BaseModel):
     note: str
 
 
+class SatelliteMapPreviewRequest(BaseModel):
+    farmer_id: str | None = None
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    polygon: list[FarmCoordinate] | None = None
+    buffer_m: int = Field(default=250, ge=20, le=2000)
+    days: int = Field(default=90, ge=15, le=365)
+    index: str = Field(default="NDMI", pattern="^(NDVI|NDWI|NDMI)$")
+    dimensions: int = Field(default=900, ge=256, le=1600)
+
+
+class SatelliteMapPreviewResponse(BaseModel):
+    farmer_id: str | None = None
+    latitude: float
+    longitude: float
+    geometry_type: str
+    index: str
+    meaning: str
+    map_url: str
+    start_date: str
+    end_date: str
+    source: str
+    legend: dict[str, str]
+
+
 class DrySpellAdvisoryRequest(BaseModel):
     farmer_id: str
     crop: str
@@ -252,8 +277,67 @@ class DrySpellAdvisoryResponse(BaseModel):
     satellite_water_stress: str | None = None
     satellite_ndwi: float | None = None
     satellite_ndmi: float | None = None
+    sensor_id: str | None = None
+    sensor_source: str | None = None
+    sensor_soil_moisture: float | None = None
+    sensor_risk_level: RiskLevel | None = None
     ai_source: str | None = None
     ai_model: str | None = None
+
+
+class SensorReadingValues(BaseModel):
+    soil_moisture: float | None = Field(default=None, ge=0, le=1)
+    soil_temperature_c: float | None = None
+    air_temperature_c: float | None = None
+    humidity_percent: float | None = Field(default=None, ge=0, le=100)
+    rainfall_mm: float | None = Field(default=None, ge=0)
+    battery_percent: float | None = Field(default=None, ge=0, le=100)
+
+
+class SensorReadingCreate(BaseModel):
+    farmer_id: str
+    sensor_id: str
+    source: str = "manual_entry"
+    device_type: str = "soil_moisture_sensor"
+    timestamp: datetime | None = None
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    readings: SensorReadingValues
+
+
+class SensorReading(BaseModel):
+    id: str = Field(default_factory=lambda: f"sensor_{uuid4().hex[:10]}")
+    farmer_id: str
+    sensor_id: str
+    source: str
+    device_type: str
+    timestamp: datetime
+    latitude: float | None = None
+    longitude: float | None = None
+    readings: SensorReadingValues
+    soil_moisture_risk: RiskLevel
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class SensorReadingResponse(BaseModel):
+    saved: bool
+    reading: SensorReading
+    advisory_hint: str
+
+
+class LiveTokenRequest(BaseModel):
+    farmer_id: str | None = None
+    language: str = "hi-IN"
+    model: str | None = None
+
+
+class LiveTokenResponse(BaseModel):
+    ready: bool
+    model: str
+    token: str | None = None
+    expire_time: datetime | None = None
+    new_session_expire_time: datetime | None = None
+    note: str
 
 
 class WeatherDailyForecast(BaseModel):
@@ -681,6 +765,8 @@ class WhatsAppWebhookResponse(BaseModel):
     transcript: str | None = None
     response_audio_base64: str | None = None
     response_audio_content_type: str | None = None
+    media_url: str | None = None
+    media_content_type: str | None = None
     outbound_provider: str | None = None
     delivery_status: str = "not_sent"
     missing_fields: list[str] = Field(default_factory=list)

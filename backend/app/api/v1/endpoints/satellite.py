@@ -1,6 +1,11 @@
 from fastapi import APIRouter, HTTPException
 
-from app.models.schemas import SatelliteSignalRequest, SatelliteSignalResponse
+from app.models.schemas import (
+    SatelliteMapPreviewRequest,
+    SatelliteMapPreviewResponse,
+    SatelliteSignalRequest,
+    SatelliteSignalResponse,
+)
 from app.repositories.store import store
 from app.services.earth_engine_service import EarthEngineService
 
@@ -35,3 +40,34 @@ def farm_signal(payload: SatelliteSignalRequest) -> SatelliteSignalResponse:
         )
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Earth Engine satellite signal unavailable: {exc}") from exc
+
+
+@router.post("/farm-map", response_model=SatelliteMapPreviewResponse)
+def farm_map(payload: SatelliteMapPreviewRequest) -> SatelliteMapPreviewResponse:
+    latitude = payload.latitude
+    longitude = payload.longitude
+    farmer_id = payload.farmer_id
+
+    if farmer_id:
+        farmer = store.get_farmer(farmer_id)
+        if farmer is None:
+            raise HTTPException(status_code=404, detail="Farmer not found")
+        latitude = latitude if latitude is not None else farmer.farm.latitude
+        longitude = longitude if longitude is not None else farmer.farm.longitude
+
+    if latitude is None or longitude is None:
+        raise HTTPException(status_code=422, detail="Farm latitude and longitude are required")
+
+    try:
+        return EarthEngineService().get_farm_map_preview(
+            farmer_id=farmer_id,
+            latitude=latitude,
+            longitude=longitude,
+            polygon=payload.polygon,
+            buffer_m=payload.buffer_m,
+            days=payload.days,
+            index=payload.index,
+            dimensions=payload.dimensions,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Earth Engine farm map unavailable: {exc}") from exc

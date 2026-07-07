@@ -14,9 +14,11 @@ from app.api.v1.endpoints import (
     expert,
     farmers,
     health,
+    live,
     providers,
     recommendations,
     satellite,
+    sensors,
     sms,
     soil_cards,
     translate,
@@ -34,6 +36,7 @@ api_router.include_router(providers.router, prefix="/api/v1/providers", tags=["p
 api_router.include_router(farmers.router, prefix="/api/v1/farmers", tags=["farmers"])
 api_router.include_router(recommendations.router, prefix="/api/v1/recommendations", tags=["recommendations"])
 api_router.include_router(satellite.router, prefix="/api/v1/satellite", tags=["satellite"])
+api_router.include_router(sensors.router, prefix="/api/v1/sensors", tags=["sensors"])
 api_router.include_router(advisories.router, prefix="/api/v1/advisories", tags=["advisories"])
 api_router.include_router(alerts.router, prefix="/api/v1/alerts", tags=["alerts"])
 api_router.include_router(diagnosis.router, prefix="/api/v1/diagnosis", tags=["diagnosis"])
@@ -44,6 +47,7 @@ api_router.include_router(chat.router, prefix="/api/v1/chat", tags=["chat"])
 api_router.include_router(dialogflow.router, prefix="/api/v1/dialogflow", tags=["dialogflow"])
 api_router.include_router(translate.router, prefix="/api/v1/translate", tags=["translate"])
 api_router.include_router(voice.router, prefix="/api/v1/voice", tags=["voice"])
+api_router.include_router(live.router, prefix="/api/v1/live", tags=["live"])
 api_router.include_router(weather.router, prefix="/api/v1/weather", tags=["weather"])
 api_router.include_router(sms.router, prefix="/api/v1/sms", tags=["sms"])
 api_router.include_router(whatsapp.router, prefix="/api/v1/whatsapp", tags=["whatsapp"])

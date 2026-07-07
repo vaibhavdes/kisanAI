@@ -162,7 +162,7 @@ class TranslationService:
         return providers
 
     def _google_parent(self) -> str:
-        return f"projects/{settings.google_cloud_project}/locations/{settings.google_cloud_location}"
+        return f"projects/{settings.google_cloud_project}/locations/{settings.translation_location}"
 
     def _google_language(self, value: str) -> str:
         return value.split("-", 1)[0].lower()

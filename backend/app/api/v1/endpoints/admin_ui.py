@@ -94,6 +94,7 @@ ADMIN_HTML = """<!doctype html>
       cursor: pointer;
     }
     button.secondary { background: #edf4ec; color: var(--green); border: 1px solid #cfe0ce; }
+    button.danger { background: #fff3f4; color: var(--bad); border: 1px solid #f1c5ca; }
     button:disabled { opacity: 0.55; cursor: wait; }
     .status { color: var(--muted); font-size: 14px; }
     .stack { display: grid; gap: 14px; }
@@ -250,6 +251,63 @@ ADMIN_HTML = """<!doctype html>
     </section>
     <section>
       <div class="section-head">
+        <h2>Sensor Reading Injector</h2>
+        <span class="status">Generic IoT/manual demo input for soil moisture and weather station data.</span>
+      </div>
+      <div class="content stack">
+        <div class="row">
+          <div>
+            <label for="sensorFarmerSelect">Farmer</label>
+            <select id="sensorFarmerSelect"></select>
+          </div>
+          <div>
+            <label for="sensorId">Sensor ID</label>
+            <input id="sensorId" type="text" value="manual_sensor_01">
+          </div>
+          <div>
+            <label for="deviceType">Device type</label>
+            <input id="deviceType" type="text" value="soil_moisture_sensor">
+          </div>
+          <div>
+            <label for="sensorSource">Source</label>
+            <input id="sensorSource" type="text" value="manual_entry">
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label for="sensorMoisture">Soil moisture 0-1</label>
+            <input id="sensorMoisture" type="text" value="0.16">
+          </div>
+          <div>
+            <label for="soilTemp">Soil temp C</label>
+            <input id="soilTemp" type="text" value="29.4">
+          </div>
+          <div>
+            <label for="airTemp">Air temp C</label>
+            <input id="airTemp" type="text" value="34.1">
+          </div>
+          <div>
+            <label for="humidity">Humidity %</label>
+            <input id="humidity" type="text" value="62">
+          </div>
+          <div>
+            <label for="rainfall">Rainfall mm</label>
+            <input id="rainfall" type="text" value="0">
+          </div>
+          <div>
+            <label for="battery">Battery %</label>
+            <input id="battery" type="text" value="78">
+          </div>
+          <div>
+            <button id="saveSensorBtn">Save Sensor Reading</button>
+          </div>
+        </div>
+        <div class="status">The advisory engine will reuse the latest reading when a farmer asks irrigation/water advice.</div>
+        <pre id="sensorOutput">No sensor reading saved yet.</pre>
+      </div>
+    </section>
+    <section>
+      <div class="section-head">
         <h2>Expert Tickets</h2>
         <button class="secondary" id="refreshTicketsBtn">Refresh Tickets</button>
       </div>
@@ -373,8 +431,11 @@ ADMIN_HTML = """<!doctype html>
         const label = `${farmer.name} · ${farmer.village}, ${farmer.district} · ${farmer.phone}`;
         return `<option value="${farmer.id}">${label}</option>`;
       }).join('');
+      const sensorSelect = document.getElementById('sensorFarmerSelect');
+      sensorSelect.innerHTML = select.innerHTML;
       if (!farmers.length) {
         select.innerHTML = '<option value="">No farmers yet</option>';
+        sensorSelect.innerHTML = '<option value="">No farmers yet</option>';
       }
       const container = document.getElementById('farmers');
       if (!farmers.length) {
@@ -387,7 +448,10 @@ ADMIN_HTML = """<!doctype html>
           <div>${farmer.village || '-'}, ${farmer.taluka || '-'}, ${farmer.district || '-'}, ${farmer.state || '-'} ${farmer.pincode || ''}</div>
           <div class="mono">Language: ${farmer.language} · Crop: ${farmer.active_crop || '-'} · Water: ${farmer.water_availability || '-'}</div>
           <div class="mono">Lat/Lng: ${farmer.farm?.latitude ?? '-'}, ${farmer.farm?.longitude ?? '-'} · Soil: ${farmer.farm?.soil_type || '-'}</div>
-          <button class="secondary" data-action="viewFarmer" data-farmer="${farmer.id}">View Context</button>
+          <div class="row">
+            <button class="secondary" data-action="viewFarmer" data-farmer="${farmer.id}">View Context</button>
+            <button class="danger" data-action="deleteFarmer" data-farmer="${farmer.id}">Remove User</button>
+          </div>
         </div>
       `).join('');
     }
@@ -407,6 +471,21 @@ ADMIN_HTML = """<!doctype html>
         openTickets: tickets,
         recentMessages: messages
       }, null, 2);
+    }
+
+    async function deleteFarmer(farmerId) {
+      const ok = window.confirm('Remove this farmer and their stored context?');
+      if (!ok) {
+        return;
+      }
+      const response = await fetch(`/api/v1/farmers/${farmerId}`, { method: 'DELETE' });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.detail || 'Could not remove farmer');
+      }
+      document.getElementById('farmerDetail').textContent = 'Select a farmer to view stored context.';
+      await Promise.all([loadFarmers(), loadTickets(), loadAuditLogs()]);
+      showBanner('Farmer removed');
     }
 
     async function sendSelectedFarmerAlert() {
@@ -437,6 +516,46 @@ ADMIN_HTML = """<!doctype html>
         raw: data
       }, null, 2);
       showBanner('Test alert submitted for selected farmer');
+    }
+
+    function numericValue(id) {
+      const value = document.getElementById(id).value;
+      if (value === '') return null;
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+
+    async function saveSensorReading() {
+      const farmerId = document.getElementById('sensorFarmerSelect').value;
+      if (!farmerId) {
+        throw new Error('Select a registered farmer first');
+      }
+      const payload = {
+        farmer_id: farmerId,
+        sensor_id: document.getElementById('sensorId').value || 'manual_sensor_01',
+        source: document.getElementById('sensorSource').value || 'manual_entry',
+        device_type: document.getElementById('deviceType').value || 'soil_moisture_sensor',
+        timestamp: new Date().toISOString(),
+        readings: {
+          soil_moisture: numericValue('sensorMoisture'),
+          soil_temperature_c: numericValue('soilTemp'),
+          air_temperature_c: numericValue('airTemp'),
+          humidity_percent: numericValue('humidity'),
+          rainfall_mm: numericValue('rainfall'),
+          battery_percent: numericValue('battery')
+        }
+      };
+      const response = await fetch('/api/v1/sensors/readings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.detail || 'Sensor reading failed');
+      }
+      document.getElementById('sensorOutput').textContent = JSON.stringify(data, null, 2);
+      showBanner('Sensor reading saved');
     }
 
     function summarizeAlertRun(data) {
@@ -577,6 +696,7 @@ ADMIN_HTML = """<!doctype html>
     document.getElementById('refreshFarmersBtn').addEventListener('click', () => loadFarmers().catch(error => showBanner(error.message, true)));
     document.getElementById('refreshAuditBtn').addEventListener('click', () => loadAuditLogs().catch(error => showBanner(error.message, true)));
     document.getElementById('sendTestAlertBtn').addEventListener('click', () => sendSelectedFarmerAlert().catch(error => showBanner(error.message, true)));
+    document.getElementById('saveSensorBtn').addEventListener('click', () => saveSensorReading().catch(error => showBanner(error.message, true)));
     document.getElementById('tickets').addEventListener('click', event => {
       if (event.target && event.target.dataset.action === 'updateTicket') {
         updateTicket(event.target.closest('.card')).catch(error => showBanner(error.message, true));
@@ -585,6 +705,9 @@ ADMIN_HTML = """<!doctype html>
     document.getElementById('farmers').addEventListener('click', event => {
       if (event.target && event.target.dataset.action === 'viewFarmer') {
         viewFarmer(event.target.dataset.farmer).catch(error => showBanner(error.message, true));
+      }
+      if (event.target && event.target.dataset.action === 'deleteFarmer') {
+        deleteFarmer(event.target.dataset.farmer).catch(error => showBanner(error.message, true));
       }
     });
     refreshAll().catch(error => showBanner(error.message, true));

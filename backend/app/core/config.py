@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     google_cloud_project: str | None = None
     google_cloud_location: str = "global"
     gcp_region: str = "asia-south1"
+    vertex_ai_location: str | None = None
+    speech_location: str = "global"
+    translation_location: str = "global"
     data_store_provider: str = "firestore"
     firestore_database: str = "(default)"
     bigquery_public_dataset: str = "kisan_ai_curated"
@@ -22,6 +25,9 @@ class Settings(BaseSettings):
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-2.5-flash"
     vertex_ai_model: str = "gemini-2.5-flash"
+    gemini_fallback_models: str = "gemini-2.5-flash"
+    vertex_ai_fallback_models: str = "gemini-2.5-flash"
+    gemini_live_model: str = "gemini-3.1-flash-live-preview"
     storage_bucket: str | None = None
     pubsub_alert_topic: str = "kisan-alerts"
     dialogflow_routing_enabled: bool = False

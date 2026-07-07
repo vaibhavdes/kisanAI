@@ -1,605 +1,480 @@
-# Kisan AI
+# Kisan Alert
 
-Track 4: Smart Water, Crop and Advisory System.
+Kisan Alert is a FastAPI + React Native/Web prototype for Track 4: Smart Water, Crop and Advisory System. It gives small farmers multilingual advisory through web/app, WhatsApp, SMS and outbound voice alerts.
 
-Kisan AI is a FastAPI + React Native prototype for small and marginal farmers. It supports multilingual farmer conversations through the app, WhatsApp-style channels, SMS and voice-call flows, with Google Cloud AI, Earth Engine, BigQuery public data and provider fallbacks.
-
-## Demo Flow
-
-1. Farmer opens the React Native app or contacts through WhatsApp/SMS/voice.
-2. Farmer is identified by phone number across channels.
-3. Language is selected or detected from the farmer message.
-4. Farmer can send text, voice note, crop photo or farm location.
-5. Backend stores farmer context, conversation history and newly captured facts.
-6. Advisory uses weather, crop stage, crop history, rainfall, dry-spell/heavy-rain history, soil, groundwater and satellite signals when available.
-7. Crop photo/voice logs can create expert follow-up tickets.
-8. Response is returned as text and, when TTS provider is configured, voice audio in the farmer language.
+Core features:
+- Crop recommendation using farmer location, soil/crop context, rainfall history, groundwater/soil public data where available, and satellite signals.
+- Weather, irrigation and dry-spell advisory using live weather, sensor readings and crop stage.
+- Crop health logging from photo/voice with expert ticket follow-up.
+- Earth Engine satellite farm signal and map preview using Sentinel-2 NDVI, NDWI and NDMI.
+- Daily proactive alert runner for weather/crop updates.
+- Admin UI for provider switches, farmers, tickets, audits, sensors and test alerts.
 
 ## Repository Layout
 
 ```text
-backend/                FastAPI backend, data, tests, scripts and Cloud Run deploy files
-react_native_chat_app/  Expo React Native frontend for Android and web
-README.md               Project overview and demo/deployment guide
+backend/                FastAPI backend, GCP scripts, data ingestion and tests
+react_native_chat_app/  React Native + web WhatsApp-style frontend
+README.md               Setup, deployment and operation guide
 ```
 
-The backend and frontend are intentionally separated. Backend-only files live under `backend/`; farmer-facing app/web files live under `react_native_chat_app/`.
+## Google Cloud Resources
 
-## What Is Implemented
+| Resource | Why it is used |
+| --- | --- |
+| Cloud Run | Hosts backend API and frontend web app. |
+| Firestore Native | Farmer profile, farm context, tickets, conversations, sensor readings and audit records. |
+| BigQuery | Curated public datasets: rainfall history, dry-spell/heavy-rain events, crop production and district context. |
+| Cloud Storage | Crop photos, voice replies and Twilio media files. |
+| Secret Manager | Runtime credentials and provider tokens. |
+| Pub/Sub + Cloud Scheduler | Daily proactive weather/crop alert trigger. |
+| Vertex AI / Gemini | Advisory reasoning, intent refinement, crop/photo/soil-card analysis. |
+| Earth Engine | Sentinel-2 farm vegetation/moisture signals and map previews. |
+| Speech-to-Text / Text-to-Speech | Voice intake and spoken responses. |
+| Translation API | Language detection and translation fallback. |
+| Dialogflow CX | Optional guided conversation routing for SMS/voice style flows. |
+| Google Maps / Geocoding | Location and pincode/village resolution. |
+| Twilio | WhatsApp inbound/outbound. |
+| Authkey | Outbound voice call alerts, and SMS if enabled. |
+| Open-Meteo | Free weather fallback when IMD/weather provider is unavailable. |
+| Sarvam | STT/TTS/translation fallback. |
 
-- FastAPI backend with local and Firestore stores.
-- Expo React Native WhatsApp-style frontend for Android and web.
-- Text, image, location and voice-note intake.
-- App endpoint: `POST /api/v1/chat/message`.
-- WhatsApp/SMS/voice provider adapters for Authkey/generic and Twilio-style webhooks.
-- Dialogflow CX fulfillment endpoint and optional text routing.
-- Gemini and Vertex AI advisory/vision provider adapters.
-- Google STT/TTS with Sarvam fallback.
-- Google Translate with Sarvam fallback.
-- IMD weather primary route with Open-Meteo fallback.
-- Earth Engine NDVI, NDWI, NDMI, EVI and NDRE adapter.
-- BigQuery public-data ingestion and context lookup.
-- Passwordless admin UI at `/admin` for provider switching, service health, expert tickets and proactive alert demo simulation.
-- Daily alert runner and Pub/Sub/Scheduler-compatible endpoint.
+## Prerequisites
 
-## Architecture
-
-```mermaid
-flowchart LR
-  Farmer["Farmer app / WhatsApp / SMS / Voice"] --> Channels["Channel adapters"]
-  Channels --> Backend["FastAPI backend"]
-  Channels --> Dialogflow["Dialogflow CX optional intent routing"]
-  Dialogflow --> Backend
-  Backend --> Store["Firestore or local store"]
-  Backend --> BigQuery["BigQuery curated public data"]
-  Backend --> Weather["IMD -> Open-Meteo fallback"]
-  Backend --> AI["Vertex AI / Gemini"]
-  Backend --> Voice["Google STT/TTS -> Sarvam"]
-  Backend --> Satellite["Earth Engine"]
-  Backend --> Alerts["Twilio WhatsApp, Authkey SMS + voice"]
-```
-
-## Google Cloud And Service Usage
-
-| Hackathon capability | How Kisan AI uses it |
-|---|---|
-| Gemini API / Google AI Studio | Fallback LLM and Gemini Vision path for advisory and image diagnosis when Vertex route is unavailable. |
-| Vertex AI | Primary GenAI route for advisory/vision in live mode. We use strong prompts plus farmer/context data, not decorative AI responses. |
-| Cloud Speech-to-Text | Transcribes farmer voice notes/call transcripts when Google integrations are enabled. |
-| Cloud Text-to-Speech | Generates spoken replies in the farmer language for app/API responses. |
-| Dialogflow CX | Optional intent/router layer for WhatsApp/SMS/voice text. Backend still validates obvious farmer intents so incomplete Dialogflow setup cannot break flow. |
-| Translation API | Detects farmer language and translates text when needed; Sarvam is fallback. |
-| Gemini multimodal / Vertex Vision | Crop-health diagnosis and soil-card extraction path. |
-| Google Maps / Geocoding | Farm location capture/geocoding route; OSM Nominatim can be fallback. |
-| Earth Engine | Farm satellite indices: NDVI, NDWI, NDMI, EVI and NDRE for water/vegetation stress. |
-| BigQuery | Curated public datasets for rainfall history, dry-spell/heavy-rain events, crop production history and district context. |
-| Firestore | Live farmer registry, conversation memory, provider routes, tickets and alert run records. |
-| Cloud Run | Backend deployment target. |
-| Pub/Sub + Cloud Scheduler | Daily proactive alert trigger. |
-| WhatsApp/SMS/voice | Authkey/Twilio-compatible channel adapters; Authkey is used for outbound SMS and voice calls. |
-| Public data | data.gov.in IMD rainfall, Maharain dry/heavy rainfall, crop APY/DES datasets and aspirational districts. |
-
-## Core Feature Flow
-
-```mermaid
-sequenceDiagram
-  participant F as Farmer
-  participant C as App/WhatsApp/SMS/Voice
-  participant API as FastAPI
-  participant M as Firestore memory
-  participant G as BigQuery + Earth Engine + Weather
-  participant AI as Vertex/Gemini
-  participant A as Authkey/Twilio
-  F->>C: text, voice, photo or location
-  C->>API: normalized channel request
-  API->>M: identify farmer and fetch prior context
-  API->>G: pull weather, public data and satellite signals when needed
-  API->>AI: generate advisory/diagnosis with context
-  API->>M: save captured facts and conversation
-  API->>C: localized text + optional audio
-  API->>A: proactive SMS/voice/WhatsApp alerts when risk is high
-```
-
-## Provider Fallbacks
-
-| Feature | Primary | Fallback |
-|---|---|---|
-| Weather | IMD/government route | Open-Meteo |
-| STT | Google Speech-to-Text | Sarvam |
-| TTS | Google Text-to-Speech | Sarvam |
-| Translation | Google Translate | Sarvam |
-| Advisory LLM | Vertex AI | Gemini API |
-| Vision/OCR | Vertex AI Vision | Gemini Vision |
-| Satellite | Earth Engine | none |
-| Maps/geocoding | Google Maps | OSM Nominatim |
-| SMS/voice outbound | Authkey | Twilio adapter |
-| WhatsApp-style channel | Authkey/generic webhook | Twilio webhook |
-
-If IMD is not configured or its request fails, the weather service attempts Open-Meteo automatically through the provider route.
-
-## Public Data Loaded
-
-BigQuery dataset: `kisan_ai_curated`.
-
-| Table | Rows loaded | Source |
-|---|---:|---|
-| `subdivision_rainfall_history` | 50,256 | IMD subdivision rainfall CSV / data.gov resource `d0419b03-b41b-4226-b48b-0bc92bf139f8` |
-| `maharashtra_dryspell_events` | 6,747 | Maharain tehsil dry-spell report, 2021-2025 |
-| `maharashtra_heavy_rainfall_events` | 6,023 | Maharain tehsil heavy-rainfall report, 2021-2025 |
-| `crop_production_history` | 5,378 | All-India crop-wise/year-wise APY CSVs, Maharashtra rice estimate CSV, DES district XLSX visible Maharashtra row |
-
-Raw source copies are kept in `backend/data/raw/uploads/`. Generated normalized files are in `backend/data/normalized/`.
-
-Additional normalized files prepared after the verified BigQuery load:
-
-- `backend/data/normalized/crop_production_history/all_states_rice_estimate.csv`: 473 rows from the all-state rice estimate file.
-- `backend/data/normalized/crop_production_history/des_district_2024_25_all_visible_rows.csv`: 29 visible DES workbook rows.
-- `backend/data/normalized/aspirational_districts/aspirational_districts.csv`: 112 aspirational district rows.
-
-Load these with the commands in the data-loading section after applying the latest schema.
-
-Current verified Maharashtra context for `Ahilyanagar / Rice / Kharif / July`:
-
-- Rainfall normal: available through `Madhya Maharashtra` IMD subdivision fallback.
-- Crop history: latest loaded rice yield available.
-- Dry-spell history: available.
-- Heavy-rainfall history: available.
-- Still missing for better precision: groundwater, soil-health baseline and agromet advisory rows.
-
-## Data Refresh And Cache Policy
-
-Regional data can be reused for farmers in the same area. Cache key uses source type, provider, state, district, taluka and optional rounded lat/lon.
-
-| Source | Refresh |
-|---|---|
-| Weather forecast | 3 hours |
-| IMD warning | 1 hour |
-| Agromet advisory | 24 hours |
-| Earth Engine satellite index | 7 days |
-| Maharain dry/heavy rainfall | 7 days |
-| Groundwater | 30 days |
-| Soil health baseline | 90 days |
-| Crop history | 365 days |
-
-## Required Environment
-
-Only `backend/.env.example` is tracked. Real `.env`, `Details.txt`, service-account JSON and `local-secrets/` are ignored and must be shared separately.
-
-Minimum local/offline run:
-
-```env
-DATA_STORE_PROVIDER=local
-ENABLE_GOOGLE_INTEGRATIONS=false
-OPEN_METEO_BASE_URL=https://api.open-meteo.com/v1/forecast
-```
-
-Live/demo variables:
-
-```env
-GOOGLE_CLOUD_PROJECT=kisanai-501120
-GOOGLE_CLOUD_LOCATION=global
-GCP_REGION=asia-south1
-DATA_STORE_PROVIDER=firestore
-FIRESTORE_DATABASE=(default)
-BIGQUERY_PUBLIC_DATASET=kisan_ai_curated
-GEMINI_API_KEY=
-GEMINI_MODEL=gemini-2.5-flash
-VERTEX_AI_MODEL=gemini-2.5-flash
-SARVAM_API_KEY=
-MAPS_API_KEY=
-STORAGE_BUCKET=
-PUBSUB_ALERT_TOPIC=kisan-alerts
-DIALOGFLOW_ROUTING_ENABLED=false
-DIALOGFLOW_AGENT_ID=
-DIALOGFLOW_ENVIRONMENT_ID=
-DIALOGFLOW_LOCATION=global
-AUTHKEY_API_KEY=
-AUTHKEY_SMS_SENDER=
-AUTHKEY_SEND_ENABLED=false
-IMD_API_BASE_URL=
-IMD_API_KEY=
-OPEN_METEO_BASE_URL=https://api.open-meteo.com/v1/forecast
-```
-
-`DIALOGFLOW_AGENT_ID` must be the Dialogflow CX agent UUID from Google Cloud Console, not only the display name. Keep `DIALOGFLOW_ROUTING_ENABLED=false` until the agent is visible in the same Google project and location as the backend config.
-
-How to get Dialogflow values:
-
-1. Open Google Cloud Console -> Dialogflow CX.
-2. Select project `kisanai-501120` and open the `kisanai` CX agent.
-3. Open Agent Settings / General.
-4. Copy the agent resource name. It looks like `projects/PROJECT_ID/locations/LOCATION/agents/AGENT_UUID`.
-5. Put only `AGENT_UUID` in `DIALOGFLOW_AGENT_ID`.
-6. Put the same location in `DIALOGFLOW_LOCATION`, for example `global` or `asia-south1`.
-7. `DIALOGFLOW_ENVIRONMENT_ID` is optional. Leave it empty for draft/latest agent. If you publish an environment, open Manage -> Environments and copy the environment UUID into this field.
-8. After Cloud Run deploy, configure the Dialogflow fulfillment/webhook URL as `https://SERVICE_URL/api/v1/dialogflow/webhook`.
-
-CLI alternative after `gcloud init`:
+Install:
 
 ```bash
-gcloud auth application-default login
-gcloud auth application-default set-quota-project kisanai-501120
-
-# If alpha components are installed:
-gcloud alpha dialogflow cx agents list --location=global --project=kisanai-501120
-gcloud alpha dialogflow cx environments list --location=global --agent=AGENT_UUID --project=kisanai-501120
-
-# REST check without installing alpha components:
-TOKEN=$(gcloud auth print-access-token)
-curl -H "Authorization: Bearer $TOKEN" \
-  -H "X-Goog-User-Project: kisanai-501120" \
-  "https://dialogflow.googleapis.com/v3/projects/kisanai-501120/locations/global/agents"
+brew install --cask google-cloud-sdk
+brew install node
 ```
 
-If the REST response is `{}`, the backend cannot use Dialogflow yet because no CX agent is visible in that project/location. Create or select the agent in project `kisanai-501120`, copy its UUID, set `DIALOGFLOW_AGENT_ID`, set `DIALOGFLOW_ROUTING_ENABLED=true`, leave `DIALOGFLOW_ENVIRONMENT_ID` blank unless an environment UUID exists, then redeploy.
-
-## AI Brain And Fine-Tuning
-
-No Vertex fine-tuning is required for the current prototype. The recommended approach is retrieval/context grounding:
-
-1. Store farmer profile, crop facts and conversation memory in Firestore.
-2. Store public rainfall/crop/dry-spell datasets in BigQuery.
-3. Fetch weather/satellite/public-data context per request.
-4. Send compact context to Vertex AI/Gemini with a strict agricultural advisory prompt.
-
-Fine-tuning can be considered later only after collecting enough expert-validated advisory examples. For hackathon judging, contextual Vertex/Gemini calls are safer, faster and easier to explain than a lightly trained model.
-
-## Local And Live Setup
-
-Install backend dependencies once:
-
-```bash
-cd backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-pip install -e ".[dev]"
-```
-
-Configure Google Cloud CLI for live mode/deployment:
+Authenticate:
 
 ```bash
 gcloud init
-gcloud config set project kisanai-501120
+gcloud config set project YOUR_PROJECT_ID
 gcloud auth application-default login
-gcloud auth application-default set-quota-project kisanai-501120
-gcloud services enable \
-  run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com \
-  firestore.googleapis.com bigquery.googleapis.com storage.googleapis.com \
-  aiplatform.googleapis.com dialogflow.googleapis.com \
-  speech.googleapis.com texttospeech.googleapis.com translate.googleapis.com \
-  pubsub.googleapis.com cloudscheduler.googleapis.com secretmanager.googleapis.com
+gcloud auth application-default set-quota-project YOUR_PROJECT_ID
 ```
 
-Local/offline backend, no Google/provider calls. Use this for fast development without `.env` secrets:
+Create a Python environment:
 
 ```bash
 cd backend
-DATA_STORE_PROVIDER=local ENABLE_GOOGLE_INTEGRATIONS=false .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8080
+python3 -m venv ../.venv-google
+../.venv-google/bin/pip install -r requirements.txt
+cd ..
 ```
 
-Live GCP/provider backend using `.env`, Firestore, BigQuery, Google/Sarvam/Authkey config:
-
-```bash
-cd backend
-DATA_STORE_PROVIDER=firestore ENABLE_GOOGLE_INTEGRATIONS=true .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8080
-```
-
-Frontend:
+Install frontend packages:
 
 ```bash
 cd react_native_chat_app
 npm install
-npm run typecheck
-EXPO_PUBLIC_API_URL=http://127.0.0.1:8080 npm run web -- --port 8081
+cd ..
 ```
 
-For browser testing, always use `EXPO_PUBLIC_API_URL=http://127.0.0.1:8080`. Android emulator uses `http://10.0.2.2:8080` when `EXPO_PUBLIC_API_URL` is not set.
+## Environment File
 
-Android emulator:
+Keep real credentials only in `.env`; do not commit it. Use `.env.example` if present, or create:
 
 ```bash
-cd react_native_chat_app
-npm run android
+GOOGLE_CLOUD_PROJECT=YOUR_PROJECT_ID
+GOOGLE_CLOUD_LOCATION=global
+GCP_REGION=asia-south1
+VERTEX_AI_LOCATION=global
+SPEECH_LOCATION=global
+TRANSLATION_LOCATION=global
+APP_NAME=Kisan Alert
+ENVIRONMENT=production
+DATA_STORE_PROVIDER=firestore
+ENABLE_GOOGLE_INTEGRATIONS=true
+FIRESTORE_DATABASE=(default)
+BIGQUERY_PUBLIC_DATASET=kisan_ai_curated
+STORAGE_BUCKET=YOUR_PROJECT_ID-kisan-ai-media
+PUBSUB_ALERT_TOPIC=kisan-alerts
+
+GEMINI_API_KEY=
+GEMINI_MODEL=gemini-2.5-flash
+GEMINI_FALLBACK_MODELS=gemini-2.5-flash
+VERTEX_AI_MODEL=gemini-2.5-flash
+VERTEX_AI_FALLBACK_MODELS=gemini-2.5-flash
+SARVAM_API_KEY=
+MAPS_API_KEY=
+IMD_API_KEY=
+IMD_API_BASE_URL=https://api.data.gov.in/resource/d0419b03-b41b-4226-b48b-0bc92bf139f8
+OPEN_METEO_BASE_URL=https://api.open-meteo.com/v1/forecast
+
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+TWILIO_WHATSAPP_FROM=whatsapp:+14155238886
+TWILIO_CONTENT_SID=
+TWILIO_ENABLE_LIVE_SEND=true
+TWILIO_VALIDATE_WEBHOOKS=true
+
+AUTHKEY_API_KEY=
+AUTHKEY_TEST_COUNTRY_CODE=91
+AUTHKEY_SMS_SENDER=
+AUTHKEY_SEND_ENABLED=false
+
+DIALOGFLOW_ROUTING_ENABLED=false
+DIALOGFLOW_LOCATION=global
+DIALOGFLOW_AGENT_ID=
+DIALOGFLOW_ENVIRONMENT_ID=
+DIALOGFLOW_CONFIDENCE_THRESHOLD=0.45
 ```
 
-The Android emulator uses `http://10.0.2.2:8080` by default. For a physical device, run:
+Do not set `GOOGLE_APPLICATION_CREDENTIALS` in Cloud Run. Cloud Run uses the service account from deployment.
+
+Important location rule:
+- `GCP_REGION` is the infrastructure region for Cloud Run, Scheduler, Storage and BigQuery.
+- `GOOGLE_CLOUD_LOCATION`, `VERTEX_AI_LOCATION`, `SPEECH_LOCATION`, `TRANSLATION_LOCATION` and `DIALOGFLOW_LOCATION` should stay `global` unless you have verified the selected model/API supports another location.
+- If Speech shows `Expected resource location to be global` or Vertex says a Gemini model is not found in `asia-south1`, run the Cloud Run env update in "Emergency Runtime Fix" below and redeploy with the corrected script.
+
+## Provision GCP Resources
+
+One-command provisioning:
 
 ```bash
-EXPO_PUBLIC_API_URL=http://YOUR_MACHINE_LAN_IP:8080 npm start
+PROJECT_ID=YOUR_PROJECT_ID REGION=asia-south1 \
+  backend/scripts/provision_gcp_resources.sh
 ```
 
-## Tests
+This enables APIs, creates the Cloud Run service account, adds IAM roles, creates the storage bucket and Pub/Sub topic, syncs `.env` credentials to Secret Manager, and applies the BigQuery schema.
+
+Firestore Native mode is a one-time project step:
 
 ```bash
-cd backend
-DATA_STORE_PROVIDER=local ENABLE_GOOGLE_INTEGRATIONS=false .venv/bin/python -m pytest tests
-.venv/bin/python -m compileall app scripts smoke_tests tests
-cd ../react_native_chat_app
-npm run typecheck
+gcloud firestore databases create --database="(default)" --location=asia-south1
 ```
 
-If using the existing shared `.venv-google` from this workspace:
+If this command says the database already exists, continue.
+
+UI equivalent:
+- APIs: Google Cloud Console -> APIs & Services -> Library -> enable the APIs listed in "Google Cloud Resources".
+- Firestore: Firestore -> Create database -> Native mode -> region `asia-south1`.
+- Storage: Cloud Storage -> Buckets -> Create bucket -> region `asia-south1` -> uniform bucket-level access.
+- BigQuery: BigQuery -> create datasets `kisan_ai_raw`, `kisan_ai_curated`, `kisan_ai_ops`.
+- Secret Manager: create one secret per key in the credentials section.
+- IAM: grant the Cloud Run service account Firestore, BigQuery, Storage, Pub/Sub, Secret Manager, Vertex AI and Dialogflow permissions.
+
+## Secret Manager
+
+Sync local `.env` credentials:
 
 ```bash
-cd backend
-DATA_STORE_PROVIDER=local ENABLE_GOOGLE_INTEGRATIONS=false ../.venv-google/bin/python -m pytest tests
-../.venv-google/bin/python -m compileall app scripts smoke_tests tests
-cd ../react_native_chat_app && npm run typecheck
+PROJECT_ID=YOUR_PROJECT_ID ENV_FILE=.env \
+  backend/scripts/sync_env_to_secret_manager.sh
 ```
 
-Latest verified result:
-
-```text
-51 passed, 1 warning
-React Native typecheck passed
-```
-
-Real-provider smoke tests are in `backend/smoke_tests/`. They require `.env` keys and Google ADC:
-
-```bash
-cd backend
-gcloud auth application-default login
-.venv/bin/python smoke_tests/test_gemini.py
-.venv/bin/python smoke_tests/test_firestore.py
-.venv/bin/python smoke_tests/test_bigquery_public_context.py
-.venv/bin/python smoke_tests/test_open_meteo.py
-.venv/bin/python smoke_tests/test_authkey_channels.py
-```
-
-## Data Loading
-
-Apply schema:
-
-```bash
-cd backend
-bq query --use_legacy_sql=false < infra/bigquery/public_data_schema.sql
-```
-
-Normalize source files:
-
-```bash
-.venv/bin/python scripts/fetch_public_data_sources.py normalize-imd-subdivision \
-  data/raw/uploads/Sub_Division_IMD_2017.csv \
-  --out data/normalized/subdivision_rainfall_history/imd_subdivision_2017.csv
-
-.venv/bin/python scripts/fetch_public_data_sources.py fetch-maharain \
-  --start-year 2021 \
-  --end-year 2025 \
-  --out-dir data/raw/maharain \
-  --normalized-dir data/normalized \
-  --insecure
-
-.venv/bin/python scripts/fetch_public_data_sources.py normalize-crop-csv \
-  "data/raw/uploads/Final-Estimate-of-Area,-Production-&-Yield-for-Rice.csv" \
-  --state-filter Maharashtra \
-  --out data/normalized/crop_production_history/maharashtra_rice_estimate.csv
-
-.venv/bin/python scripts/fetch_public_data_sources.py normalize-crop-csv \
-  "data/raw/uploads/All-India_-Crop-wise-Area,-Production-&-Yield.csv" \
-  --out data/normalized/crop_production_history/all_india_crop_wise.csv
-
-.venv/bin/python scripts/fetch_public_data_sources.py normalize-crop-csv \
-  "data/raw/uploads/All-India_-Year-wise-Crop-Area,-Production-&-Yield.csv" \
-  --out data/normalized/crop_production_history/all_india_year_wise.csv
-
-.venv/bin/python scripts/fetch_public_data_sources.py normalize-des-district-xlsx \
-  "data/raw/uploads/DES-District-Data-For-2024-25.xlsx" \
-  --state-filter Maharashtra \
-  --out data/normalized/crop_production_history/maharashtra_des_district_2024_25.csv
-
-.venv/bin/python scripts/fetch_public_data_sources.py normalize-crop-csv \
-  "data/raw/uploads/Final-Estimate-of-Area,-Production-&-Yield-for-Rice.csv" \
-  --out data/normalized/crop_production_history/all_states_rice_estimate.csv
-
-.venv/bin/python scripts/fetch_public_data_sources.py normalize-des-district-xlsx \
-  "data/raw/uploads/DES-District-Data-For-2024-25.xlsx" \
-  --out data/normalized/crop_production_history/des_district_2024_25_all_visible_rows.csv
-
-.venv/bin/python scripts/fetch_public_data_sources.py normalize-aspirational-districts \
-  "data/raw/uploads/Aspirational District.csv" \
-  --out data/normalized/aspirational_districts/aspirational_districts.csv
-```
-
-Load normalized data:
-
-```bash
-.venv/bin/python scripts/ingest_public_data.py subdivision_rainfall_history \
-  data/normalized/subdivision_rainfall_history/imd_subdivision_2017.csv \
-  --source-name "IMD subdivision rainfall CSV" \
-  --source-url "https://api.data.gov.in/resource/d0419b03-b41b-4226-b48b-0bc92bf139f8"
-
-.venv/bin/python scripts/ingest_public_data.py maharashtra_dryspell_events \
-  data/normalized/maharashtra_dryspell_events/maharain_dryspell.csv \
-  --source-name "Maharain tehsil dry spell" \
-  --source-url "https://maharain.maharashtra.gov.in/test/maharain/rpt_past_queries_tehsil_wise_dryspell.php"
-
-.venv/bin/python scripts/ingest_public_data.py maharashtra_heavy_rainfall_events \
-  data/normalized/maharashtra_heavy_rainfall_events/maharain_heavy_rainfall.csv \
-  --source-name "Maharain tehsil heavy rainfall" \
-  --source-url "https://maharain.maharashtra.gov.in/test/maharain/rpt_past_queries_tehsil_wise_heavy_rainfall.php"
-
-.venv/bin/python scripts/ingest_public_data.py crop_production_history \
-  data/normalized/crop_production_history/maharashtra_rice_estimate.csv \
-  --source-name "DES final rice estimate"
-
-.venv/bin/python scripts/ingest_public_data.py crop_production_history \
-  data/normalized/crop_production_history/all_states_rice_estimate.csv \
-  --source-name "All-state rice final estimate"
-
-.venv/bin/python scripts/ingest_public_data.py crop_production_history \
-  data/normalized/crop_production_history/des_district_2024_25_all_visible_rows.csv \
-  --source-name "DES district 2024-25 visible rows"
-
-.venv/bin/python scripts/ingest_public_data.py aspirational_districts \
-  data/normalized/aspirational_districts/aspirational_districts.csv \
-  --source-name "Aspirational Districts"
-```
-
-Data still useful to add later:
-
-- Groundwater depth/status by district/block from India-WRIS or CGWB.
-- Soil-health district/block baseline from Soil Health Card or state soil data.
-- IMD agromet advisory rows by district/crop.
-- More district-level Maharashtra crop APY rows for crops beyond the current rice/DES sample.
-
-## Manual API Checks
-
-```bash
-curl -X POST http://127.0.0.1:8080/api/v1/chat/message \
-  -H "Content-Type: application/json" \
-  -d '{"from_phone":"+91 9970983794","text":"माझ्या शेताला आज पाणी द्यावे का?","language":"mr-IN"}'
-
-curl -X POST http://127.0.0.1:8080/api/v1/chat/message \
-  -H "Content-Type: application/json" \
-  -d '{"from_phone":"+91 9970983794","latitude":19.0948,"longitude":74.7480,"location_label":"Ahilyanagar farm","language":"mr-IN"}'
-```
-
-Useful endpoints:
-
-| Endpoint | Purpose |
-|---|---|
-| `GET /health` | Boolean service health. |
-| `GET /admin` | Provider route/admin UI. |
-| `GET /api/v1/farmers` | Admin farmer list. |
-| `GET /api/v1/expert/tickets` | Admin expert ticket queue. |
-| `POST /api/v1/chat/message` | App text/image/audio/location chat. |
-| `POST /api/v1/weather/context` | IMD/Open-Meteo weather context. |
-| `POST /api/v1/data/context` | BigQuery public-data context. |
-| `POST /api/v1/recommendations/crop` | Crop recommendation. |
-| `POST /api/v1/advisories/dry-spell` | Dry-spell advisory. |
-| `POST /api/v1/diagnosis/log` | Crop diagnosis and expert ticket. |
-| `POST /api/v1/alerts/run-daily` | Alert runner. |
-| `POST /api/v1/dialogflow/webhook` | Dialogflow CX fulfillment. |
-| `POST /api/v1/sms/webhook` | Authkey/generic SMS webhook. |
-| `POST /api/v1/calls/webhook` | Authkey/generic voice callback. |
-| `POST /api/v1/twilio/whatsapp` | Twilio WhatsApp webhook. |
-| `POST /api/v1/twilio/sms` | Twilio SMS webhook. |
-| `POST /api/v1/twilio/voice` | Twilio voice webhook. |
-| `POST /api/v1/twilio/status` | Twilio SMS/WhatsApp delivery status callback. |
-| `GET /api/v1/twilio/media/{media_id}` | Temporary local media endpoint for Twilio reply audio fallback. |
-
-## Deployment
-
-Backend deploy to Cloud Run:
-
-```bash
-cd backend
-ENV_FILE=../.env PROJECT_ID=kisanai-501120 scripts/sync_env_to_secret_manager.sh
-
-PROJECT_ID=kisanai-501120 \
-REGION=asia-south1 \
-SERVICE_NAME=kisan-alert-api \
-ENV_FILE=../.env \
-scripts/deploy_cloud_run.sh
-```
-
-Set up daily alerts:
-
-```bash
-cd backend
-PROJECT_ID=kisanai-501120 REGION=asia-south1 SERVICE_NAME=kisan-alert-api scripts/setup_scheduler_pubsub.sh
-```
-
-Print webhook URLs:
-
-```bash
-cd backend
-PROJECT_ID=kisanai-501120 REGION=asia-south1 SERVICE_NAME=kisan-alert-api scripts/print_webhook_urls.sh
-```
-
-Configure after deployment:
-
-- Dialogflow CX fulfillment: `https://SERVICE_URL/api/v1/dialogflow/webhook`
-- Twilio WhatsApp: `https://SERVICE_URL/api/v1/twilio/whatsapp`
-- Twilio status callback: `https://SERVICE_URL/api/v1/twilio/status`
-- Twilio SMS: `https://SERVICE_URL/api/v1/twilio/sms`
-- Twilio Voice: `https://SERVICE_URL/api/v1/twilio/voice`
-- Authkey/generic SMS: `https://SERVICE_URL/api/v1/sms/webhook`
-- Authkey/generic voice callback: `https://SERVICE_URL/api/v1/calls/webhook`
-
-Admin demo after deployment:
-
-1. Open `https://SERVICE_URL/admin`.
-2. Check service health and switch providers if needed.
-3. Click `Create Demo Farmer` if no test farmer exists.
-4. Choose a dry-spell or heat-stress scenario.
-5. Click `Run Simulation`.
-6. The panel calls `/api/v1/alerts/run-daily`; urgent dry-spell risk produces WhatsApp/SMS/voice-call channels based on the alert priority policy. If `AUTHKEY_SEND_ENABLED=false`, results show dry-run/skipped status without sending.
-7. Crop photo diagnosis creates expert tickets; use the Expert Tickets panel to assign/respond/update status.
-
-Twilio WhatsApp setup:
-
-- Inbound webhook: set the Twilio WhatsApp sender webhook to `/api/v1/twilio/whatsapp`.
-- Outbound WhatsApp uses Twilio only. Authkey is not used for WhatsApp.
-- Status callback: use `/api/v1/twilio/status` for delivery, failed, read and related Twilio message events.
-- Public URL: set `TWILIO_PUBLIC_BASE_URL` to the ngrok/custom-domain/Cloud Run URL that Twilio calls. Cloud Run deploy sets this to the service URL when no custom callback URL is provided.
-- Webhook security: set `TWILIO_VALIDATE_WEBHOOKS=true` after `TWILIO_AUTH_TOKEN` is configured.
-- Outbound alerts stay dry-run unless `TWILIO_ENABLE_LIVE_SEND=true`.
-- For proactive messages outside the WhatsApp customer-service window, set `TWILIO_CONTENT_SID` and optional JSON `TWILIO_CONTENT_VARIABLES`. Template variables can include `{message}`, `{media_url}`, and `{media_file_name}`.
-- Voice replies over WhatsApp need a public media URL. Configure `TWILIO_MEDIA_BUCKET` or `STORAGE_BUCKET`; optionally set `TWILIO_MEDIA_PUBLIC_BASE_URL` if the bucket path is public. Without cloud media, local/ngrok uses `/api/v1/twilio/media/{media_id}` as a short-lived fallback; production avoids the in-memory fallback when bucket publishing fails.
-- Live Twilio REST sends may return `queued`/`accepted` before final delivery. The backend treats those as accepted, not delivered; final delivery/read/failed states come through `/api/v1/twilio/status`.
-
-Authkey SMS/voice setup:
-
-- Outbound SMS text and outbound voice calls use Authkey only.
-- Configure `AUTHKEY_API_KEY`, `AUTHKEY_SMS_SENDER`, `AUTHKEY_TEST_COUNTRY_CODE`, and `AUTHKEY_SEND_ENABLED`.
-- WhatsApp template IDs are not required for Authkey because WhatsApp is handled by Twilio.
-
-Twilio credential/env values:
-
+Synced secrets include:
+- `GEMINI_API_KEY`
+- `SARVAM_API_KEY`
+- `AUTHKEY_API_KEY`
+- `AUTHKEY_WHATSAPP_TEMPLATE_ID`
+- `AUTHKEY_WHATSAPP_MEDIA_TEMPLATE_ID`
 - `TWILIO_ACCOUNT_SID`
 - `TWILIO_AUTH_TOKEN`
-- `TWILIO_WHATSAPP_FROM`
-- Optional `TWILIO_MESSAGING_SERVICE_SID`
-- Optional `TWILIO_CONTENT_SID`
-- Optional `TWILIO_CONTENT_VARIABLES`
-- Optional `TWILIO_STATUS_CALLBACK_URL`
-- Optional `TWILIO_MEDIA_BUCKET`
-- Optional `TWILIO_MEDIA_PUBLIC_BASE_URL`
+- `TWILIO_CONTENT_SID`
+- `TWILIO_CONTENT_VARIABLES`
+- `TWILIO_MESSAGING_SERVICE_SID`
+- `MAPS_API_KEY`
+- `IMD_API_KEY`
+- `SMS_PROVIDER_API_KEY`
+- `WHATSAPP_BUSINESS_TOKEN`
+- `VOICE_CALL_PROVIDER_API_KEY`
 
-Frontend web deploy to Cloud Run:
+Cloud Run mounts these with `--set-secrets`; non-secret switches such as provider enable flags remain normal env vars.
+
+## Local Run
+
+Offline/local mode, no live provider calls:
+
+```bash
+cd backend
+DATA_STORE_PROVIDER=local ENABLE_GOOGLE_INTEGRATIONS=false \
+  ../.venv-google/bin/uvicorn app.main:app --host 127.0.0.1 --port 8080
+```
+
+Live GCP/provider mode:
+
+```bash
+cd backend
+DATA_STORE_PROVIDER=firestore ENABLE_GOOGLE_INTEGRATIONS=true \
+  ../.venv-google/bin/uvicorn app.main:app --host 127.0.0.1 --port 8080
+```
+
+Frontend web:
 
 ```bash
 cd react_native_chat_app
-PROJECT_ID=kisanai-501120 \
-REGION=asia-south1 \
-BACKEND_SERVICE_NAME=kisan-alert-api \
-FRONTEND_SERVICE_NAME=kisan-alert-web \
-scripts/deploy_cloud_run_web.sh
+EXPO_PUBLIC_API_URL=http://127.0.0.1:8080 npm run web
 ```
 
-For Android build, set `EXPO_PUBLIC_API_URL=https://BACKEND_SERVICE_URL` before building.
+Android:
 
-## Known Limits
+```bash
+cd react_native_chat_app
+EXPO_PUBLIC_API_URL=http://10.0.2.2:8080 npx expo run:android
+```
 
-- WhatsApp outbound audio needs a public media URL. Twilio replies can publish generated audio through GCS/signed URLs when configured, with short-lived local media fallback for development.
-- `api.data.gov.in` IMD resource timed out locally, so the loaded IMD subdivision data currently comes from the downloaded CSV copy.
-- Maharain fetch uses `--insecure` because its certificate chain failed local Python CA verification.
-- Groundwater, soil-health baseline and agromet advisory rows should be loaded next for stronger recommendation precision.
-- `.venv`, `.venv-*`, `.env`, `Details.txt`, `local-secrets/`, `node_modules/`, `.expo/` and build outputs are ignored. Only `.env.example` should be committed.
+## Deploy Backend
 
-## Evaluation Readiness
+```bash
+PROJECT_ID=YOUR_PROJECT_ID REGION=asia-south1 ENV_FILE=.env \
+  backend/scripts/deploy_cloud_run.sh
+```
 
-| Criteria | Readiness |
-|---|---|
-| Problem-solution fit, 20% | Directly covers smart crop recommendation, dry-spell/water advisory and crop-health expert follow-up for small farmers. |
-| AI/technical execution, 25% | AI is active in advisory, language, voice, vision and context synthesis. Backend runs end-to-end locally and with Google provider configuration. |
-| Deployability/scalability, 25% | Cloud Run, Firestore, BigQuery, Pub/Sub/Scheduler and provider switching are in place. District rollout can reuse regional cached datasets. |
-| Inclusivity/accessibility, 15% | Indic language text, voice input/output, SMS, WhatsApp-style and voice-call flows support low-literacy/low-connectivity users. |
-| Impact potential, 10% | Can scale regionally: one public-data/weather/satellite context can support many farmers in the same district/taluka. |
-| Presentation clarity, 5% | `/admin`, `/docs`, README, demo farmer, and alert simulation give a 5-minute non-technical walkthrough path. |
+The script:
+- Deploys `kisan-alert-api` to Cloud Run.
+- Uses Firestore and Google integrations.
+- Mounts configured credentials from Secret Manager.
+- Sets `TWILIO_PUBLIC_BASE_URL` to the Cloud Run URL if not provided.
 
-## Track 4 Coverage
+Important output:
+- Backend health: `https://BACKEND_URL/health`
+- Admin UI: `https://BACKEND_URL/admin`
+- Twilio WhatsApp webhook: `https://BACKEND_URL/api/v1/twilio/whatsapp`
+- Twilio status callback: `https://BACKEND_URL/api/v1/twilio/status`
+- Dialogflow webhook: `https://BACKEND_URL/api/v1/dialogflow/webhook`
 
-| Required component | Implementation |
-|---|---|
-| Smart crop recommendation using satellite and soil data | `/api/v1/recommendations/crop` combines farmer soil profile, groundwater, rainfall/public data and Earth Engine satellite signals. |
-| Real-time advisory and dry-spell alerts | `/api/v1/advisories/dry-spell`, `/api/v1/alerts/run-daily`, IMD/Open-Meteo weather, alert priority policy, Authkey SMS/voice delivery. |
-| Crop health logging via photo/voice | `/api/v1/chat/message`, `/api/v1/diagnosis/log`, Gemini/Vertex Vision and expert tickets. |
-| Rythu Seva Kendra/expert follow-up | Expert ticket creation, assignment, status updates and farmer notification logs. |
-| Voice-and-SMS in Indic languages | Google STT/TTS, Translation API, Sarvam fallback, SMS and voice-call adapters. |
+Emergency Runtime Fix:
 
-## IP Boundary
+If an older deploy accidentally set AI locations to the Cloud Run region, fix the live service immediately:
 
-This is a clean hackathon project for the competition problem statement. It does not depend on private product code or proprietary app assets.
+```bash
+gcloud run services update kisan-alert-api \
+  --region asia-south1 \
+  --update-env-vars GOOGLE_CLOUD_LOCATION=global,VERTEX_AI_LOCATION=global,SPEECH_LOCATION=global,TRANSLATION_LOCATION=global,GCP_REGION=asia-south1,DIALOGFLOW_LOCATION=global,VERTEX_AI_MODEL=gemini-2.5-flash,VERTEX_AI_FALLBACK_MODELS=gemini-2.5-flash,GEMINI_MODEL=gemini-2.5-flash,GEMINI_FALLBACK_MODELS=gemini-2.5-flash
+```
+
+If STT fails with `speech.recognizers.recognize denied`, grant the Cloud Run service account Speech Client:
+
+```bash
+SERVICE_ACCOUNT_EMAIL=kisan-alert-runner@YOUR_PROJECT_ID.iam.gserviceaccount.com
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+  --member="serviceAccount:${SERVICE_ACCOUNT_EMAIL}" \
+  --role="roles/speech.client"
+```
+
+## Deploy Frontend Web
+
+```bash
+cd react_native_chat_app
+PROJECT_ID=YOUR_PROJECT_ID REGION=asia-south1 BACKEND_SERVICE_NAME=kisan-alert-api \
+  scripts/deploy_cloud_run_web.sh
+```
+
+The script deploys `kisan-alert-web` and injects the backend Cloud Run URL into `EXPO_PUBLIC_API_URL`.
+
+## Scheduler and Alerts
+
+Create/update the daily alert schedule:
+
+```bash
+PROJECT_ID=YOUR_PROJECT_ID REGION=asia-south1 SERVICE_NAME=kisan-alert-api \
+  SCHEDULE="0 7 * * *" TIME_ZONE="Asia/Kolkata" \
+  backend/scripts/setup_scheduler_pubsub.sh
+```
+
+Default message body:
+
+```json
+{"kind":"weather","min_priority":"low","max_farmers":100}
+```
+
+Alerts use:
+- WhatsApp through Twilio when the session/template allows it.
+- Voice through Authkey for scheduled daily alert calls.
+- SMS only when enabled and templates/sender are configured.
+
+## Dialogflow CX Setup
+
+CLI:
+
+```bash
+gcloud alpha dialogflow cx agents list --location=global --project=YOUR_PROJECT_ID
+gcloud alpha dialogflow cx environments list \
+  --location=global \
+  --agent=AGENT_UUID \
+  --project=YOUR_PROJECT_ID
+```
+
+Set:
+
+```bash
+DIALOGFLOW_ROUTING_ENABLED=true
+DIALOGFLOW_LOCATION=global
+DIALOGFLOW_AGENT_ID=AGENT_UUID
+DIALOGFLOW_ENVIRONMENT_ID=
+```
+
+UI:
+- Dialogflow CX Console -> select project -> create/open agent.
+- Copy the agent UUID from the URL or agent details.
+- Fulfillment/Webhook URL after backend deploy: `https://BACKEND_URL/api/v1/dialogflow/webhook`.
+- Keep `DIALOGFLOW_ENVIRONMENT_ID` empty unless you publish an environment.
+
+## Twilio WhatsApp Setup
+
+UI:
+- Twilio Console -> Messaging -> WhatsApp Sandbox or WhatsApp Sender.
+- Set inbound webhook to `https://BACKEND_URL/api/v1/twilio/whatsapp`.
+- Set status callback to `https://BACKEND_URL/api/v1/twilio/status`.
+- For outbound proactive messages outside the 24-hour window, create an approved Content Template and set `TWILIO_CONTENT_SID`.
+
+## Twilio Voice Number Setup
+
+Use this when judges call the Twilio test number.
+
+UI:
+- Twilio Console -> Phone Numbers -> Manage -> Active numbers -> select `+1 775 269 8657`.
+- Voice configuration:
+  - A call comes in: `Webhook`
+  - Method: `POST`
+  - URL: `https://BACKEND_URL/api/v1/twilio/voice`
+- Messaging configuration:
+  - A message comes in: `Webhook`
+  - Method: `POST`
+  - URL: `https://BACKEND_URL/api/v1/twilio/sms`
+- Save.
+
+The web/app "Voice call" button opens `tel:+17752698657`. Twilio then posts call speech/DTMF to `/api/v1/twilio/voice`, and Kisan Alert returns TwiML with `<Gather>` for continued speech input.
+
+CLI smoke check:
+
+```bash
+cd backend
+ENABLE_GOOGLE_INTEGRATIONS=true ../.venv-google/bin/python smoke_tests/test_twilio_whatsapp.py
+```
+
+## Authkey Voice/SMS Setup
+
+Set:
+
+```bash
+AUTHKEY_API_KEY=
+AUTHKEY_TEST_COUNTRY_CODE=91
+AUTHKEY_SMS_SENDER=
+AUTHKEY_SEND_ENABLED=false
+```
+
+Voice alert testing is available from the admin UI. SMS requires sender/template approval, so keep SMS disabled until approved.
+
+## Public Data and BigQuery Ingestion
+
+Normalized files included:
+
+```text
+backend/data/normalized/subdivision_rainfall_history/imd_subdivision_2017.csv
+backend/data/normalized/maharashtra_dryspell_events/maharain_dryspell.csv
+backend/data/normalized/maharashtra_heavy_rainfall_events/maharain_heavy_rainfall.csv
+backend/data/normalized/crop_production_history/all_india_crop_wise.csv
+backend/data/normalized/crop_production_history/all_india_year_wise.csv
+backend/data/normalized/crop_production_history/all_states_rice_estimate.csv
+backend/data/normalized/crop_production_history/des_district_2024_25_all_visible_rows.csv
+backend/data/normalized/crop_production_history/maharashtra_des_district_2024_25.csv
+backend/data/normalized/crop_production_history/maharashtra_rice_estimate.csv
+backend/data/normalized/aspirational_districts/aspirational_districts.csv
+```
+
+Load datasets:
+
+```bash
+cd backend
+
+../.venv-google/bin/python scripts/ingest_public_data.py subdivision_rainfall_history \
+  data/normalized/subdivision_rainfall_history/imd_subdivision_2017.csv \
+  --source-name "IMD subdivision rainfall history" \
+  --source-url "https://api.data.gov.in/resource/d0419b03-b41b-4226-b48b-0bc92bf139f8"
+
+../.venv-google/bin/python scripts/ingest_public_data.py maharashtra_dryspell_events \
+  data/normalized/maharashtra_dryspell_events/maharain_dryspell.csv \
+  --source-name "Maharain tehsil dryspell events" \
+  --source-url "https://maharain.maharashtra.gov.in"
+
+../.venv-google/bin/python scripts/ingest_public_data.py maharashtra_heavy_rainfall_events \
+  data/normalized/maharashtra_heavy_rainfall_events/maharain_heavy_rainfall.csv \
+  --source-name "Maharain tehsil heavy rainfall events" \
+  --source-url "https://maharain.maharashtra.gov.in"
+
+for file in \
+  data/normalized/crop_production_history/all_india_crop_wise.csv \
+  data/normalized/crop_production_history/all_india_year_wise.csv \
+  data/normalized/crop_production_history/all_states_rice_estimate.csv \
+  data/normalized/crop_production_history/des_district_2024_25_all_visible_rows.csv \
+  data/normalized/crop_production_history/maharashtra_des_district_2024_25.csv \
+  data/normalized/crop_production_history/maharashtra_rice_estimate.csv; do
+  ../.venv-google/bin/python scripts/ingest_public_data.py crop_production_history "$file" \
+    --source-name "Crop production history"
+done
+
+../.venv-google/bin/python scripts/ingest_public_data.py aspirational_districts \
+  data/normalized/aspirational_districts/aspirational_districts.csv \
+  --source-name "Aspirational districts"
+```
+
+The advisory engine reads BigQuery through `/api/v1/data/context` and recommendation/advisory flows.
+
+## Tests and Smoke Checks
+
+Backend unit/integration tests:
+
+```bash
+cd backend
+DATA_STORE_PROVIDER=local ENABLE_GOOGLE_INTEGRATIONS=false \
+  ../.venv-google/bin/python -m pytest tests
+```
+
+Frontend typecheck:
+
+```bash
+cd react_native_chat_app
+npm run typecheck
+```
+
+Live provider smoke tests:
+
+```bash
+cd backend
+ENABLE_GOOGLE_INTEGRATIONS=true ../.venv-google/bin/python smoke_tests/test_gemini.py
+ENABLE_GOOGLE_INTEGRATIONS=true ../.venv-google/bin/python smoke_tests/test_vertex_ai.py
+ENABLE_GOOGLE_INTEGRATIONS=true ../.venv-google/bin/python smoke_tests/test_bigquery.py
+ENABLE_GOOGLE_INTEGRATIONS=true ../.venv-google/bin/python smoke_tests/test_secret_manager.py
+ENABLE_GOOGLE_INTEGRATIONS=true ../.venv-google/bin/python smoke_tests/test_earth_engine.py
+```
+
+## API Quick Reference
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /health` | Service readiness. |
+| `GET /admin` | Passwordless demo/admin console. |
+| `POST /api/v1/chat/message` | App/web conversation. |
+| `POST /api/v1/twilio/whatsapp` | Twilio WhatsApp webhook. |
+| `POST /api/v1/sensors/readings` | Generic IoT/manual sensor reading. |
+| `POST /api/v1/satellite/farm-signal` | Earth Engine NDVI/NDWI/NDMI/EVI/NDRE signal. |
+| `POST /api/v1/satellite/farm-map` | Earth Engine map thumbnail URL. |
+| `POST /api/v1/alerts/run-daily` | Run proactive alerts manually. |
+| `POST /api/v1/alerts/run-daily/pubsub` | Pub/Sub Scheduler target. |
+| `POST /api/v1/dialogflow/webhook` | Dialogflow fulfillment webhook. |
+
+## Release Checklist
+
+1. `.env` exists locally and is not committed.
+2. `backend/scripts/provision_gcp_resources.sh` completed.
+3. Firestore Native database exists.
+4. `backend/scripts/sync_env_to_secret_manager.sh` completed.
+5. Backend Cloud Run deploy completed.
+6. Frontend Cloud Run deploy completed.
+7. Scheduler script completed.
+8. Twilio and Dialogflow webhook URLs updated to backend Cloud Run URL.
+9. BigQuery data ingestion completed.
+10. `/health`, `/admin`, web chat and WhatsApp test message verified.
+
+## Notes
+
+- Intent detection uses local safety rules plus AI refinement when enabled, so it is not limited to exact keywords.
+- Sensor integration is vendor-neutral. Any IoT source can post normalized moisture/weather readings to `/api/v1/sensors/readings`.
+- Earth Engine thumbnail URLs are generated by Google Earth Engine; the backend sends the URL through WhatsApp/app as media.
+- Keep `backend.zip`, `Archive.zip`, `.env`, virtualenvs and local secret files out of commits.

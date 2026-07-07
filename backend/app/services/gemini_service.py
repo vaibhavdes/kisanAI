@@ -20,6 +20,60 @@ class AdvisoryProviderUnavailable(RuntimeError):
 
 
 class GeminiService:
+    def classify_farmer_intent(
+        self,
+        *,
+        farmer_id: str | None,
+        channel: str | None,
+        language: str,
+        user_message: str,
+        local_intent: str,
+    ) -> tuple[str, dict[str, str | None]]:
+        errors: list[str] = []
+        for provider in self._provider_order():
+            start = ServiceAuditLogService().start()
+            try:
+                if provider == ProviderName.vertex_ai:
+                    intent = self._classify_intent_with_vertex(
+                        language=language,
+                        user_message=user_message,
+                        local_intent=local_intent,
+                    )
+                elif provider == ProviderName.gemini:
+                    intent = self._classify_intent_with_gemini(
+                        language=language,
+                        user_message=user_message,
+                        local_intent=local_intent,
+                    )
+                else:
+                    continue
+                ServiceAuditLogService().record(
+                    farmer_id=farmer_id,
+                    channel=channel,
+                    service="llm_advisory",
+                    operation="classify_farmer_intent",
+                    provider=provider.value,
+                    success=True,
+                    duration_ms=ServiceAuditLogService().elapsed_ms(start),
+                    request_body={"language": language, "message": user_message, "local_intent": local_intent},
+                    response_body={"intent": intent},
+                )
+                return intent, {"intentAiSource": provider.value, "intentAiModel": self._model_for_provider(provider)}
+            except Exception as exc:
+                errors.append(f"{provider.value}:{exc.__class__.__name__}:{exc}")
+                ServiceAuditLogService().record(
+                    farmer_id=farmer_id,
+                    channel=channel,
+                    service="llm_advisory",
+                    operation="classify_farmer_intent",
+                    provider=provider.value,
+                    success=False,
+                    duration_ms=ServiceAuditLogService().elapsed_ms(start),
+                    request_body={"language": language, "message": user_message, "local_intent": local_intent},
+                    error=str(exc),
+                )
+        raise AdvisoryProviderUnavailable("; ".join(errors) or "No LLM intent provider is configured.")
+
     def generate_test_advisory(self, payload: AdvisoryTestRequest) -> AdvisoryTestResponse:
         errors: list[str] = []
         for provider in self._provider_order():
@@ -119,14 +173,9 @@ class GeminiService:
         client = genai.Client(
             vertexai=True,
             project=settings.google_cloud_project,
-            location=settings.google_cloud_location,
+            location=settings.vertex_ai_location or settings.google_cloud_location,
         )
-        return self._generate_with_client(
-            client=client,
-            model=settings.vertex_ai_model,
-            payload=payload,
-            source=ProviderName.vertex_ai.value,
-        )
+        return self._generate_advisory_with_model_fallback(client, ProviderName.vertex_ai, payload)
 
     def _generate_advisory_with_gemini(self, payload: AdvisoryTestRequest) -> AdvisoryTestResponse:
         from google import genai
@@ -134,12 +183,28 @@ class GeminiService:
         if not settings.gemini_api_key:
             raise AdvisoryProviderUnavailable("GEMINI_API_KEY is required for Gemini API fallback.")
         client = genai.Client(api_key=settings.gemini_api_key)
-        return self._generate_with_client(
-            client=client,
-            model=settings.gemini_model,
-            payload=payload,
-            source=ProviderName.gemini.value,
-        )
+        return self._generate_advisory_with_model_fallback(client, ProviderName.gemini, payload)
+
+    def _generate_advisory_with_model_fallback(
+        self,
+        client,
+        provider: ProviderName,
+        payload: AdvisoryTestRequest,
+    ) -> AdvisoryTestResponse:
+        errors: list[str] = []
+        for model in self._models_for_provider(provider):
+            try:
+                return self._generate_with_client(
+                    client=client,
+                    model=model,
+                    payload=payload,
+                    source=provider.value,
+                )
+            except Exception as exc:
+                errors.append(f"{model}:{exc}")
+                if not self._is_resource_exhausted(exc):
+                    raise
+        raise AdvisoryProviderUnavailable("; ".join(errors))
 
     def _generate_with_client(
         self,
@@ -190,9 +255,21 @@ Keep advisory farmer-friendly, short, and actionable.
         client = genai.Client(
             vertexai=True,
             project=settings.google_cloud_project,
-            location=settings.google_cloud_location,
+            location=settings.vertex_ai_location or settings.google_cloud_location,
         )
-        return self._generate_farmer_reply_with_client(client, settings.vertex_ai_model, **kwargs)
+        return self._generate_farmer_reply_with_model_fallback(client, ProviderName.vertex_ai, **kwargs)
+
+    def _classify_intent_with_vertex(self, **kwargs) -> str:
+        from google import genai
+
+        if not settings.google_cloud_project:
+            raise AdvisoryProviderUnavailable("GOOGLE_CLOUD_PROJECT is required for Vertex AI.")
+        client = genai.Client(
+            vertexai=True,
+            project=settings.google_cloud_project,
+            location=settings.vertex_ai_location or settings.google_cloud_location,
+        )
+        return self._classify_intent_with_model_fallback(client, ProviderName.vertex_ai, **kwargs)
 
     def _generate_farmer_reply_with_gemini(self, **kwargs) -> str:
         from google import genai
@@ -200,7 +277,84 @@ Keep advisory farmer-friendly, short, and actionable.
         if not settings.gemini_api_key:
             raise AdvisoryProviderUnavailable("GEMINI_API_KEY is required for Gemini API fallback.")
         client = genai.Client(api_key=settings.gemini_api_key)
-        return self._generate_farmer_reply_with_client(client, settings.gemini_model, **kwargs)
+        return self._generate_farmer_reply_with_model_fallback(client, ProviderName.gemini, **kwargs)
+
+    def _classify_intent_with_gemini(self, **kwargs) -> str:
+        from google import genai
+
+        if not settings.gemini_api_key:
+            raise AdvisoryProviderUnavailable("GEMINI_API_KEY is required for Gemini API fallback.")
+        client = genai.Client(api_key=settings.gemini_api_key)
+        return self._classify_intent_with_model_fallback(client, ProviderName.gemini, **kwargs)
+
+    def _generate_farmer_reply_with_model_fallback(self, client, provider: ProviderName, **kwargs) -> str:
+        errors: list[str] = []
+        for model in self._models_for_provider(provider):
+            try:
+                return self._generate_farmer_reply_with_client(client, model, **kwargs)
+            except Exception as exc:
+                errors.append(f"{model}:{exc}")
+                if not self._is_resource_exhausted(exc):
+                    raise
+        raise AdvisoryProviderUnavailable("; ".join(errors))
+
+    def _classify_intent_with_model_fallback(self, client, provider: ProviderName, **kwargs) -> str:
+        errors: list[str] = []
+        for model in self._models_for_provider(provider):
+            try:
+                return self._classify_intent_with_client(client, model, **kwargs)
+            except Exception as exc:
+                errors.append(f"{model}:{exc}")
+                if not self._is_resource_exhausted(exc):
+                    raise
+        raise AdvisoryProviderUnavailable("; ".join(errors))
+
+    def _classify_intent_with_client(
+        self,
+        client,
+        model: str,
+        *,
+        language: str,
+        user_message: str,
+        local_intent: str,
+    ) -> str:
+        allowed = {
+            "general_advisory",
+            "weather_query",
+            "irrigation_advisory",
+            "satellite_advisory",
+            "crop_recommendation",
+            "crop_planning",
+            "crop_diagnosis",
+            "identity_query",
+            "greeting",
+        }
+        prompt = f"""
+Classify this farmer message into exactly one intent.
+
+Allowed intents:
+- weather_query: local weather, rain, temperature forecast.
+- irrigation_advisory: whether to water now, soil moisture, dry spell, irrigation.
+- satellite_advisory: farm/crop growth, field health report, crop improvement vs last week, water stress seen by satellite, NDVI/satellite/Earth Engine.
+- crop_recommendation: which crop to grow or choose.
+- crop_planning: farmer says they planted/sowed/planning a crop or gives sowing date/variety.
+- crop_diagnosis: disease, pest, leaf spot, crop photo diagnosis.
+- identity_query: asks who they are.
+- greeting: hello/namaste only.
+- general_advisory: anything else.
+
+Return only JSON: {{"intent":"one_allowed_intent"}}
+
+Language code: {language}
+Rule-based initial intent: {local_intent}
+Farmer message: {user_message}
+"""
+        response = client.models.generate_content(model=model, contents=prompt)
+        data = self._parse_json_response((response.text or "").strip())
+        intent = str(data.get("intent") or "").strip()
+        if intent not in allowed:
+            raise AdvisoryProviderUnavailable(f"Intent classifier returned unsupported intent: {intent}")
+        return intent
 
     def _generate_farmer_reply_with_client(
         self,
@@ -249,6 +403,25 @@ Draft facts to convert into farmer-friendly answer:
         if provider == ProviderName.vertex_ai:
             return settings.vertex_ai_model
         return settings.gemini_model
+
+    def _models_for_provider(self, provider: ProviderName) -> list[str]:
+        if provider == ProviderName.vertex_ai:
+            primary = settings.vertex_ai_model
+            fallback = settings.vertex_ai_fallback_models
+        else:
+            primary = settings.gemini_model
+            fallback = settings.gemini_fallback_models
+        models = [primary]
+        models.extend(model.strip() for model in fallback.split(",") if model.strip())
+        deduped: list[str] = []
+        for model in models:
+            if model not in deduped:
+                deduped.append(model)
+        return deduped
+
+    def _is_resource_exhausted(self, exc: Exception) -> bool:
+        text = str(exc).lower()
+        return "resource_exhausted" in text or "resource exhausted" in text or "429" in text or "quota" in text
 
     def _parse_json_response(self, text: str) -> dict:
         cleaned = text.removeprefix("```json").removeprefix("```").removesuffix("```").strip()

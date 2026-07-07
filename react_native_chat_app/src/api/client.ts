@@ -1,4 +1,4 @@
-import type { ChatPayload, ChatResponse } from "@/types/chat";
+import type { ChatPayload, ChatResponse, LiveTokenResponse, SensorReadingPayload, SensorReadingResponse } from "@/types/chat";
 import { Platform } from "react-native";
 
 declare global {
@@ -41,6 +41,17 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
 
 export function sendChatMessage(payload: ChatPayload): Promise<ChatResponse> {
   return postJson<ChatResponse>("/api/v1/chat/message", payload);
+}
+
+export function saveSensorReading(payload: SensorReadingPayload): Promise<SensorReadingResponse> {
+  return postJson<SensorReadingResponse>("/api/v1/sensors/readings", payload);
+}
+
+export function createLiveToken(farmerId?: string, language = "hi-IN"): Promise<LiveTokenResponse> {
+  return postJson<LiveTokenResponse>("/api/v1/live/token", {
+    farmer_id: farmerId,
+    language,
+  });
 }
 
 export const apiBaseUrl = fallbackUrl;

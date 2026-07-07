@@ -3,7 +3,12 @@ from datetime import date, timedelta
 from pydantic import BaseModel
 
 from app.core.config import settings
-from app.models.schemas import FarmCoordinate, SatelliteHistoryPoint, SatelliteSignalResponse
+from app.models.schemas import (
+    FarmCoordinate,
+    SatelliteHistoryPoint,
+    SatelliteMapPreviewResponse,
+    SatelliteSignalResponse,
+)
 
 
 class NdviSnapshot(BaseModel):
@@ -72,6 +77,57 @@ class EarthEngineService:
             ),
         )
 
+    def get_farm_map_preview(
+        self,
+        latitude: float,
+        longitude: float,
+        polygon: list[FarmCoordinate] | None = None,
+        buffer_m: int = 250,
+        days: int = 90,
+        index: str = "NDMI",
+        dimensions: int = 900,
+        farmer_id: str | None = None,
+    ) -> SatelliteMapPreviewResponse:
+        import ee
+
+        ee.Initialize(project=settings.google_cloud_project)
+        end = date.today()
+        start = end - timedelta(days=days)
+        geometry, geometry_type = self._geometry(ee, latitude, longitude, polygon, buffer_m)
+        collection = self._collection(ee, geometry, start.isoformat(), end.isoformat())
+        image = collection.median().clip(geometry)
+
+        normalized_index = index.upper()
+        vis, meaning, legend = self._preview_style(normalized_index)
+        layer = image.select(normalized_index)
+        boundary = ee.Image().byte().paint(
+            featureCollection=ee.FeatureCollection([ee.Feature(geometry)]),
+            color=1,
+            width=3,
+        )
+        preview = layer.visualize(**vis).blend(boundary.visualize(palette=["ffffff"], opacity=0.9))
+        map_url = preview.getThumbURL(
+            {
+                "region": geometry.bounds(),
+                "dimensions": dimensions,
+                "format": "png",
+            }
+        )
+
+        return SatelliteMapPreviewResponse(
+            farmer_id=farmer_id,
+            latitude=latitude,
+            longitude=longitude,
+            geometry_type=geometry_type,
+            index=normalized_index,
+            meaning=meaning,
+            map_url=map_url,
+            start_date=start.isoformat(),
+            end_date=end.isoformat(),
+            source="earth_engine_sentinel_2_thumbnail",
+            legend=legend,
+        )
+
     def _geometry(
         self,
         ee,
@@ -111,6 +167,27 @@ class EarthEngineService:
             },
         ).rename("EVI")
         return image.addBands([ndvi, ndwi, ndmi, evi, ndre])
+
+    def _preview_style(self, index: str) -> tuple[dict, str, dict[str, str]]:
+        if index == "NDVI":
+            return (
+                {"min": 0, "max": 0.8, "palette": ["d73027", "fee08b", "1a9850"]},
+                "Crop growth map",
+                {"red": "weak growth", "yellow": "medium growth", "green": "healthy growth"},
+            )
+        if index == "NDWI":
+            return (
+                {"min": -0.5, "max": 0.4, "palette": ["d73027", "fee08b", "1a9850"]},
+                "Surface water / wetness map",
+                {"red": "dry surface", "yellow": "moderate wetness", "green": "higher wetness"},
+            )
+        if index == "NDMI":
+            return (
+                {"min": -0.3, "max": 0.4, "palette": ["d73027", "fee08b", "1a9850"]},
+                "Crop moisture and water-stress map",
+                {"red": "high water stress", "yellow": "medium stress", "green": "healthy moisture"},
+            )
+        raise ValueError("Unsupported satellite preview index. Use NDVI, NDWI, or NDMI.")
 
     def _mean_indices(self, ee, image, geometry) -> dict:
         values = image.reduceRegion(

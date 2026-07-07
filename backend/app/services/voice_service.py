@@ -195,7 +195,7 @@ class VoiceService:
         language = payload.language or settings.default_language
         recognizer = (
             f"projects/{settings.google_cloud_project}/locations/"
-            f"{settings.google_cloud_location}/recognizers/_"
+            f"{settings.speech_location}/recognizers/_"
         )
         client = SpeechClient()
         config = cloud_speech.RecognitionConfig(

@@ -100,7 +100,7 @@ class DialogflowChannelService:
         return QueryParameters(parameters=struct)
 
     def _location(self) -> str:
-        return settings.dialogflow_location or settings.google_cloud_location or "global"
+        return settings.dialogflow_location or "global"
 
     def _reply_text(self, messages: Any) -> str | None:
         parts: list[str] = []

@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
 from app.models.schemas import FarmerCreate, FarmerIdentifyRequest, FarmerIdentifyResponse, FarmerResponse
 from app.repositories.store import store
@@ -14,6 +14,13 @@ def create_farmer(payload: FarmerCreate) -> FarmerResponse:
 @router.get("", response_model=list[FarmerResponse])
 def list_farmers(limit: int = 100) -> list[FarmerResponse]:
     return store.list_farmers(limit=limit)
+
+
+@router.delete("/{farmer_id}", response_model=dict[str, bool])
+def delete_farmer(farmer_id: str) -> dict[str, bool]:
+    if not store.delete_farmer(farmer_id):
+        raise HTTPException(status_code=404, detail="Farmer not found")
+    return {"deleted": True}
 
 
 @router.post("/identify", response_model=FarmerIdentifyResponse)

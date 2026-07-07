@@ -12,6 +12,9 @@ from app.models.schemas import (
     GovernmentDataContextRequest,
     DetectLanguageRequest,
     DrySpellAdvisoryRequest,
+    RiskLevel,
+    SoilCardExtractionRequest,
+    SoilCardExtractionResponse,
     WaterAvailability,
     WeatherContextRequest,
     VoiceSpeakRequest,
@@ -24,11 +27,14 @@ from app.repositories.store import store
 from app.services.channel_intent import detect_farmer_intent, is_crop_followup_text, is_water_followup_text
 from app.services.conversation_store import ConversationStore
 from app.services.dialogflow_channel_service import DialogflowChannelService, DialogflowChannelUnavailable
+from app.services.earth_engine_service import EarthEngineService
 from app.services.expert_service import ExpertService
 from app.services.geocoding_service import GeocodingProviderUnavailable, GeocodingService, LocationResolution
 from app.services.bigquery_public_data_service import BigQueryPublicDataService
 from app.services.gemini_service import AdvisoryProviderUnavailable, GeminiService
 from app.services.recommendation_engine import RecommendationEngine
+from app.services.sensor_service import SensorService
+from app.services.soil_card_vision_service import SoilCardVisionService
 from app.services.translation_service import TranslationProviderUnavailable, TranslationService
 from app.services.vision_ocr_service import VisionOcrService, VisionProviderUnavailable
 from app.services.weather_context_service import WeatherContextService, WeatherProviderUnavailable
@@ -71,10 +77,19 @@ class WhatsAppService:
             media_type=media_type_for_intent,
             has_location=payload.latitude is not None and payload.longitude is not None,
         )
+        intent, intent_ai_meta = self._refine_intent_with_ai(
+            farmer.id,
+            channel,
+            response_language,
+            text,
+            intent,
+            payload,
+        )
         intent = self._intent_with_context(farmer.id, text, intent)
 
         dialogflow_response = self._dialogflow_response(payload, farmer.id, response_language, text, transcript, intent)
         if dialogflow_response:
+            dialogflow_response.data_sources.update(intent_ai_meta)
             dialogflow_response.farmer_id = farmer.id
             dialogflow_response.detected_language = response_language
             dialogflow_response.missing_fields = identity.missing_fields
@@ -107,19 +122,22 @@ class WhatsAppService:
 
         self._log_farmer_message(farmer.id, text or self._message_summary(payload), response_language, intent, payload, channel)
         response = self._build_response(payload, farmer.id, response_language, text, transcript, intent, channel)
+        response.data_sources.update(intent_ai_meta)
         response.farmer_id = farmer.id
         response.detected_language = response_language
         response.missing_fields = identity.missing_fields
         self._naturalize_response(response, farmer.id, response_language, text or "", channel)
         self._attach_day_start_bulletin(response, farmer, response_language, channel)
 
-        self._attach_audio(farmer.id, response, response_language)
+        if not self._should_skip_voice_attachment(response, channel):
+            self._attach_audio(farmer.id, response, response_language)
 
         if send_outbound:
             response.outbound_provider, response.delivery_status = self._send_whatsapp_reply(
                 payload.from_phone,
                 response.reply,
                 response.template_name,
+                response.media_url,
             )
         else:
             response.delivery_status = "app_response"
@@ -143,7 +161,7 @@ class WhatsAppService:
         self._capture_profile_facts(farmer, text)
         farmer = store.get_farmer(farmer_id) or farmer
 
-        if intent == "crop_planning" or self._is_crop_planning_text(text):
+        if intent == "crop_planning" or (intent != "crop_recommendation" and self._is_crop_planning_text(text)):
             return self._crop_planning_response(farmer, language, text, transcript)
 
         if intent == "location_update":
@@ -218,7 +236,7 @@ class WhatsAppService:
 
         if intent == "crop_diagnosis":
             if payload.media_uri or payload.media_base64:
-                return self._diagnose_crop_photo(payload, farmer_id, language, text, transcript)
+                return self._image_response(payload, farmer_id, language, text, transcript)
             return WhatsAppWebhookResponse(
                 intent=intent,
                 reply=phrase("sms_photo", language),
@@ -432,26 +450,71 @@ class WhatsAppService:
         crop = self._crop_label(farmer.active_crop or "crop", language)
         planted = farmer.active_crop_planted_at or "unknown"
         variety = farmer.active_crop_variety or "unknown"
+        growth_status = self._localized_satellite_status(signal.vegetation_status, language)
+        water_status = self._localized_satellite_status(signal.water_stress, language)
+        moisture_status = self._localized_satellite_status(signal.moisture_status, language)
+        chlorophyll_status = self._localized_satellite_status(signal.chlorophyll_status, language)
+        action = self._satellite_farmer_action(signal, language)
+        technical = self._satellite_technical_line(signal)
+        media_url = None
+        media_content_type = None
+        preview_sources: dict[str, str | float | int | bool | None] = {}
+        preview_warnings: list[str] = []
+        try:
+            preview = EarthEngineService().get_farm_map_preview(
+                farmer_id=farmer.id,
+                latitude=farmer.farm.latitude,
+                longitude=farmer.farm.longitude,
+                buffer_m=250,
+                days=90,
+                index="NDMI",
+            )
+            media_url = preview.map_url
+            media_content_type = "image/png"
+            preview_sources.update(
+                {
+                    "satelliteMap": preview.source,
+                    "satelliteMapIndex": preview.index,
+                    "satelliteMapMeaning": preview.meaning,
+                }
+            )
+        except Exception as exc:
+            preview_warnings.append(f"Earth Engine map preview failed: {exc}")
         if language == "hi-IN":
             reply = (
-                f"{self._location_label(farmer)} में {crop} की सैटेलाइट रिपोर्ट: "
-                f"NDVI {signal.ndvi}, NDWI {signal.ndwi}, NDMI {signal.ndmi}, EVI {signal.evi}, NDRE {signal.ndre}. "
-                f"पानी तनाव {signal.water_stress}, बढ़वार {signal.vegetation_status}, नमी {signal.moisture_status}, क्लोरोफिल {signal.chlorophyll_status}. "
-                f"बुवाई तारीख {planted}, वाण {variety}. Data: {signal.source}."
+                f"{self._location_label(farmer)} में आपके {crop} खेत का सैटेलाइट अंदाज:\n\n"
+                f"फसल बढ़वार: {growth_status}\n"
+                f"पानी का तनाव: {water_status}\n"
+                f"मिट्टी/फसल नमी: {moisture_status}\n"
+                f"हरियाली/क्लोरोफिल: {chlorophyll_status}\n\n"
+                f"सलाह: {action}\n\n"
+                f"फसल जानकारी: बुवाई तारीख {planted}, किस्म {variety}.\n"
+                f"नोट: यह अंदाज Sentinel-2 उपग्रह पर आधारित है. अंतिम निर्णय के लिए मौसम, फसल अवस्था और खेत में असली जांच साथ में देखें.\n\n"
+                f"तकनीकी जानकारी: {technical}"
             )
         elif language == "mr-IN":
             reply = (
-                f"{self._location_label(farmer)} येथे {crop} ची सॅटेलाइट रिपोर्ट: "
-                f"NDVI {signal.ndvi}, NDWI {signal.ndwi}, NDMI {signal.ndmi}, EVI {signal.evi}, NDRE {signal.ndre}. "
-                f"पाण्याचा ताण {signal.water_stress}, वाढ {signal.vegetation_status}, ओलावा {signal.moisture_status}, क्लोरोफिल {signal.chlorophyll_status}. "
-                f"लागवड तारीख {planted}, वाण {variety}. Data: {signal.source}."
+                f"{self._location_label(farmer)} येथील तुमच्या {crop} शेताचा सॅटेलाइट अंदाज:\n\n"
+                f"पीक वाढ: {growth_status}\n"
+                f"पाण्याचा ताण: {water_status}\n"
+                f"माती/पीक ओलावा: {moisture_status}\n"
+                f"हिरवळ/क्लोरोफिल: {chlorophyll_status}\n\n"
+                f"सल्ला: {action}\n\n"
+                f"पीक माहिती: लागवड तारीख {planted}, वाण {variety}.\n"
+                f"टीप: हा अंदाज Sentinel-2 उपग्रहावर आधारित आहे. अचूक निर्णयासाठी हवामान, पीक अवस्था आणि शेतातील प्रत्यक्ष तपासणी जोडली जाते.\n\n"
+                f"तांत्रिक माहिती: {technical}"
             )
         else:
             reply = (
-                f"Satellite report for {crop} at {self._location_label(farmer)}: "
-                f"NDVI {signal.ndvi}, NDWI {signal.ndwi}, NDMI {signal.ndmi}, EVI {signal.evi}, NDRE {signal.ndre}. "
-                f"Water stress {signal.water_stress}, vegetation {signal.vegetation_status}, moisture {signal.moisture_status}, chlorophyll {signal.chlorophyll_status}. "
-                f"Planted date {planted}, variety {variety}. Data: {signal.source}."
+                f"Satellite estimate for your {crop} field at {self._location_label(farmer)}:\n\n"
+                f"Crop growth: {growth_status}\n"
+                f"Water stress: {water_status}\n"
+                f"Soil/crop moisture: {moisture_status}\n"
+                f"Greenness/chlorophyll: {chlorophyll_status}\n\n"
+                f"Advice: {action}\n\n"
+                f"Crop context: planted date {planted}, variety {variety}.\n"
+                f"Note: this estimate uses Sentinel-2 satellite data. For the final decision, combine it with weather, crop stage and a field check.\n\n"
+                f"Technical details: {technical}"
             )
         return WhatsAppWebhookResponse(
             intent="satellite_advisory",
@@ -469,9 +532,140 @@ class WhatsAppService:
                 "vegetationStatus": signal.vegetation_status,
                 "moistureStatus": signal.moisture_status,
                 "chlorophyllStatus": signal.chlorophyll_status,
+                **preview_sources,
             },
+            media_url=media_url,
+            media_content_type=media_content_type,
+            service_warnings=preview_warnings,
             stored_context=self._stored_context(farmer),
         )
+
+    def _refine_intent_with_ai(
+        self,
+        farmer_id: str,
+        channel: str,
+        language: str,
+        text: str | None,
+        local_intent: str,
+        payload: WhatsAppWebhookRequest,
+    ) -> tuple[str, dict[str, str | None]]:
+        if local_intent not in {"general_advisory", "unknown"}:
+            return local_intent, {}
+        if not settings.enable_google_integrations or not text:
+            return local_intent, {}
+        if payload.latitude is not None or payload.longitude is not None:
+            return local_intent, {}
+        if payload.media_uri or payload.media_base64 or payload.media_type in {"image", "photo", "audio", "voice", "document"}:
+            return local_intent, {}
+        try:
+            refined, meta = GeminiService().classify_farmer_intent(
+                farmer_id=farmer_id,
+                channel=channel,
+                language=language,
+                user_message=text,
+                local_intent=local_intent,
+            )
+            return refined, meta if refined != local_intent else {}
+        except AdvisoryProviderUnavailable:
+            return local_intent, {}
+
+    def _localized_satellite_status(self, status: str | None, language: str) -> str:
+        normalized = status or "unknown"
+        labels = {
+            "hi-IN": {
+                "unknown": "अभी साफ नहीं",
+                "poor": "कमजोर",
+                "moderate": "मध्यम",
+                "healthy": "अच्छी",
+                "high": "ज्यादा",
+                "medium": "मध्यम",
+                "low": "कम",
+                "very_dry": "बहुत कम",
+                "dry": "कम",
+                "adequate": "ठीक",
+                "moist": "अच्छा",
+                "good": "अच्छा",
+            },
+            "mr-IN": {
+                "unknown": "सध्या स्पष्ट नाही",
+                "poor": "कमकुवत",
+                "moderate": "मध्यम",
+                "healthy": "चांगली",
+                "high": "जास्त",
+                "medium": "मध्यम",
+                "low": "कमी",
+                "very_dry": "खूप कमी",
+                "dry": "कमी",
+                "adequate": "ठीक",
+                "moist": "चांगला",
+                "good": "चांगला",
+            },
+        }
+        if language in labels:
+            return labels[language].get(normalized, normalized.replace("_", " "))
+        english = {
+            "unknown": "not clear yet",
+            "poor": "weak",
+            "moderate": "moderate",
+            "healthy": "good",
+            "high": "high",
+            "medium": "medium",
+            "low": "low",
+            "very_dry": "very low",
+            "dry": "low",
+            "adequate": "adequate",
+            "moist": "good",
+            "good": "good",
+        }
+        return english.get(normalized, normalized.replace("_", " "))
+
+    def _satellite_farmer_action(self, signal, language: str) -> str:
+        water_stress = signal.water_stress
+        moisture = signal.moisture_status
+        chlorophyll = signal.chlorophyll_status
+        if language == "hi-IN":
+            action = "आज या कल खेत में 3-4 जगह मिट्टी की नमी हाथ से जांचें."
+            if water_stress == "high" or moisture in {"very_dry", "dry"}:
+                action += " अगर 2-3 इंच तक मिट्टी सूखी है तो हल्की सिंचाई करें."
+            elif water_stress == "medium":
+                action += " नमी कम लगे तो अगले 24 घंटे में हल्की सिंचाई की तैयारी रखें."
+            else:
+                action += " अभी तुरंत सिंचाई की जरूरत नहीं दिखती; सामान्य निगरानी रखें."
+            if chlorophyll == "low":
+                action += " पत्तों में पीलापन दिखे तो फोटो भेजें; बिना जांच नाइट्रोजन न बढ़ाएं."
+            return action
+        if language == "mr-IN":
+            action = "आज किंवा उद्या शेतात 3-4 ठिकाणी मातीचा ओलावा हाताने तपासा."
+            if water_stress == "high" or moisture in {"very_dry", "dry"}:
+                action += " जमीन 2-3 इंच कोरडी असेल तर हलके सिंचन करा."
+            elif water_stress == "medium":
+                action += " ओलावा कमी वाटला तर पुढील 24 तासांत हलक्या सिंचनाची तयारी ठेवा."
+            else:
+                action += " सध्या लगेच पाणी देण्याची गरज दिसत नाही; नियमित पाहणी ठेवा."
+            if chlorophyll == "low":
+                action += " पानांवर पिवळेपणा दिसत असेल तर फोटो पाठवा; तपासणीशिवाय नायट्रोजन वाढवू नका."
+            return action
+        action = "Check soil moisture by hand at 3-4 spots today or tomorrow."
+        if water_stress == "high" or moisture in {"very_dry", "dry"}:
+            action += " If the top 2-3 inches are dry, give light irrigation."
+        elif water_stress == "medium":
+            action += " If moisture feels low, prepare light irrigation within 24 hours."
+        else:
+            action += " Immediate irrigation is not indicated; continue normal monitoring."
+        if chlorophyll == "low":
+            action += " If leaves look yellow, send a photo and avoid increasing nitrogen without checking."
+        return action
+
+    def _satellite_technical_line(self, signal) -> str:
+        return (
+            f"NDVI {signal.ndvi}, NDWI {signal.ndwi}, NDMI {signal.ndmi}, "
+            f"EVI {signal.evi}, NDRE {signal.ndre}. Source: {self._satellite_source_label(signal.source)}."
+        )
+
+    def _satellite_source_label(self, source: str | None) -> str:
+        if source == "earth_engine_sentinel_2":
+            return "Google Earth Engine / Sentinel-2"
+        return source or "satellite provider"
 
     def _crop_recommendation_response(
         self,
@@ -514,17 +708,19 @@ class WhatsAppService:
             )
 
         try:
+            water_availability, sensor_sources = self._crop_water_availability(farmer)
             recommendation = RecommendationEngine().recommend(
                 farmer=farmer,
                 payload=CropRecommendationRequest(
                     farmer_id=farmer.id,
                     expected_rainfall_mm=expected_rainfall,
-                    water_availability=farmer.water_availability or WaterAvailability.medium,
+                    water_availability=water_availability,
                 ),
                 ndvi=None,
                 public_context=public_context,
                 public_context_error=None if public_context else "BigQuery context unavailable",
             )
+            recommendation.data_sources.update(sensor_sources)
             top = recommendation.recommendations[:3]
             crops = ", ".join(self._crop_label(score.crop, language) for score in top)
             best = top[0] if top else None
@@ -557,6 +753,28 @@ class WhatsAppService:
                 service_warnings=warnings + [str(exc)],
                 stored_context=self._stored_context(farmer),
             )
+
+    def _crop_water_availability(
+        self,
+        farmer: FarmerResponse,
+    ) -> tuple[WaterAvailability, dict[str, str | float | int | bool | None]]:
+        latest_sensor = SensorService().latest_for_farmer(farmer.id)
+        if latest_sensor and latest_sensor.readings.soil_moisture is not None:
+            moisture = latest_sensor.readings.soil_moisture
+            if latest_sensor.soil_moisture_risk in {RiskLevel.critical, RiskLevel.high}:
+                availability = WaterAvailability.low
+            elif latest_sensor.soil_moisture_risk == RiskLevel.low:
+                availability = WaterAvailability.high
+            else:
+                availability = WaterAvailability.medium
+            return availability, {
+                "sensor": latest_sensor.source,
+                "sensorDeviceType": latest_sensor.device_type,
+                "soilMoisture": moisture,
+                "soilMoistureRisk": latest_sensor.soil_moisture_risk.value,
+                "waterAvailabilityFromSensor": availability.value,
+            }
+        return farmer.water_availability or WaterAvailability.medium, {}
 
     def _irrigation_response(
         self,
@@ -600,6 +818,10 @@ class WhatsAppService:
                 data_sources={
                     "weather": advisory.weather_source,
                     "weatherFallbackUsed": advisory.weather_fallback_used,
+                    "sensor": advisory.sensor_source,
+                    "sensorId": advisory.sensor_id,
+                    "sensorSoilMoisture": advisory.sensor_soil_moisture,
+                    "sensorRisk": advisory.sensor_risk_level.value if advisory.sensor_risk_level else None,
                     "satellite": advisory.satellite_source,
                     "ai": advisory.ai_source,
                     "riskLevel": advisory.risk_level.value,
@@ -669,7 +891,15 @@ class WhatsAppService:
         text: str,
         channel: str,
     ) -> None:
-        if not response.reply or response.intent in {"location_update", "voice_message", "satellite_advisory"}:
+        if not response.reply or response.intent in {
+            "location_update",
+            "voice_message",
+            "satellite_advisory",
+            "general_advisory",
+            "crop_diagnosis",
+            "crop_planning",
+            "soil_card_extraction",
+        }:
             return
         farmer = store.get_farmer(farmer_id)
         if not farmer:
@@ -822,6 +1052,8 @@ class WhatsAppService:
         if self._extract_pincode(text):
             previous_intent = self._last_active_intent(farmer_id)
             return previous_intent or intent
+        if intent == "crop_recommendation":
+            return intent
         if self._is_crop_planning_text(text):
             return "crop_planning"
         if intent in {
@@ -1023,6 +1255,122 @@ class WhatsAppService:
             response_audio_content_type=voice_response.response_audio_content_type,
         )
 
+    def _image_response(
+        self,
+        payload: WhatsAppWebhookRequest,
+        farmer_id: str,
+        language: str,
+        text: str | None,
+        transcript: str | None,
+    ) -> WhatsAppWebhookResponse:
+        if self._is_soil_card_text(text):
+            soil_response = self._try_soil_card_image(payload, farmer_id, language)
+            if soil_response:
+                return soil_response
+        if not text:
+            soil_response = self._try_soil_card_image(payload, farmer_id, language)
+            if soil_response and self._soil_card_has_values(soil_response):
+                return soil_response
+        return self._diagnose_crop_photo(payload, farmer_id, language, text, transcript)
+
+    def _try_soil_card_image(
+        self,
+        payload: WhatsAppWebhookRequest,
+        farmer_id: str,
+        language: str,
+    ) -> WhatsAppWebhookResponse | None:
+        try:
+            extraction = SoilCardVisionService().extract(
+                SoilCardExtractionRequest(
+                    farmer_id=farmer_id,
+                    image_uri=payload.media_uri,
+                    image_base64=payload.media_base64,
+                    mime_type=payload.media_mime_type or "image/jpeg",
+                    extracted_text=payload.text,
+                    language=language,
+                )
+            )
+        except Exception as exc:
+            if self._is_soil_card_text(payload.text):
+                return WhatsAppWebhookResponse(
+                    intent="soil_card_extraction",
+                    reply=self._soil_card_failed_reply(language),
+                    template_name="soil_card_failed",
+                    service_warnings=[f"Soil card extraction failed: {exc}"],
+                    stored_context=self._stored_context(store.get_farmer(farmer_id)) if store.get_farmer(farmer_id) else {},
+                )
+            return None
+        if not self._soil_card_has_values(extraction) and not self._is_soil_card_text(payload.text):
+            return None
+        return WhatsAppWebhookResponse(
+            intent="soil_card_extraction",
+            reply=self._soil_card_reply(extraction, language),
+            template_name="soil_card_extracted",
+            data_sources={
+                "vision": extraction.source,
+                "model": extraction.model,
+                "soilCardPersisted": extraction.persisted,
+                "confidence": extraction.confidence,
+            },
+            stored_context=self._stored_context(extraction.farmer) if extraction.farmer else {},
+        )
+
+    def _soil_card_has_values(self, extraction: SoilCardExtractionResponse) -> bool:
+        return any(
+            value is not None
+            for value in [
+                extraction.ph,
+                extraction.ec,
+                extraction.organic_carbon,
+                extraction.nitrogen,
+                extraction.phosphorus,
+                extraction.potassium,
+            ]
+        ) or bool(extraction.micronutrients)
+
+    def _is_soil_card_text(self, text: str | None) -> bool:
+        normalized = (text or "").lower()
+        return any(
+            token in normalized
+            for token in [
+                "soil card",
+                "soil health",
+                "soil test",
+                "माती पत्रिका",
+                "माती आरोग्य",
+                "मृदा",
+                "मिट्टी कार्ड",
+                "मिट्टी जांच",
+                "soil report",
+            ]
+        )
+
+    def _soil_card_reply(self, extraction: SoilCardExtractionResponse, language: str) -> str:
+        values = []
+        if extraction.ph is not None:
+            values.append(f"pH {extraction.ph}")
+        if extraction.organic_carbon is not None:
+            values.append(f"OC {extraction.organic_carbon}")
+        if extraction.nitrogen is not None:
+            values.append(f"N {extraction.nitrogen}")
+        if extraction.phosphorus is not None:
+            values.append(f"P {extraction.phosphorus}")
+        if extraction.potassium is not None:
+            values.append(f"K {extraction.potassium}")
+        summary = ", ".join(values) if values else "values need manual review"
+        if language == "mr-IN":
+            return f"माती आरोग्य पत्रिकेतून माहिती वाचली: {summary}. ही माहिती तुमच्या शेताच्या प्रोफाइलमध्ये साठवली आहे. पुढील पीक आणि खत सल्ल्यासाठी मी हे वापरेन."
+        if language == "hi-IN":
+            return f"मिट्टी कार्ड से जानकारी पढ़ी: {summary}. यह जानकारी आपके खेत प्रोफाइल में सेव हो गई है. आगे फसल और खाद सलाह में मैं इसे उपयोग करूंगा."
+        return f"I read the soil card values: {summary}. I saved them to your farm profile and will use them for crop and fertilizer advice."
+
+    def _soil_card_failed_reply(self, language: str) -> str:
+        if language == "mr-IN":
+            return "माती आरोग्य पत्रिका स्पष्ट वाचता आली नाही. कृपया संपूर्ण कार्डाचा सरळ आणि स्पष्ट फोटो पाठवा."
+        if language == "hi-IN":
+            return "मिट्टी कार्ड साफ पढ़ा नहीं गया. कृपया पूरे कार्ड की सीधी और साफ फोटो भेजें."
+        return "I could not read the soil card clearly. Please send a straight, clear photo of the full card."
+
     def _diagnose_crop_photo(
         self,
         payload: WhatsAppWebhookRequest,
@@ -1126,6 +1474,14 @@ class WhatsAppService:
             response.response_audio_content_type = response_audio.content_type
         else:
             response.service_warnings.append("TTS provider unavailable; text response was sent without voice audio.")
+
+    def _should_skip_voice_attachment(self, response: WhatsAppWebhookResponse, channel: str) -> bool:
+        return channel == "whatsapp" and response.intent in {
+            "general_advisory",
+            "crop_planning",
+            "soil_card_extraction",
+            "location_update",
+        }
 
     def _detect_language(self, text: str | None) -> str | None:
         if not text or not settings.enable_google_integrations:
@@ -1333,7 +1689,13 @@ class WhatsAppService:
             return issue_map.get(issue, issue), action_map.get(action, action)
         return issue, action
 
-    def _send_whatsapp_reply(self, phone: str, reply: str, template_name: str | None) -> tuple[str | None, str]:
+    def _send_whatsapp_reply(
+        self,
+        phone: str,
+        reply: str,
+        template_name: str | None,
+        media_url: str | None = None,
+    ) -> tuple[str | None, str]:
         return "twilio", "reply_returned_to_twilio"
 
     def _log_farmer_message(
@@ -1384,6 +1746,7 @@ class WhatsAppService:
                     "template_name": response.template_name,
                     "delivery_status": response.delivery_status,
                     "should_escalate": response.should_escalate,
+                    "has_media_url": bool(response.media_url),
                 },
             )
         )

@@ -117,7 +117,7 @@ class VisionOcrService:
             client = genai.Client(
                 vertexai=True,
                 project=settings.google_cloud_project,
-                location=settings.google_cloud_location,
+                location=settings.vertex_ai_location or settings.google_cloud_location,
             )
             model = settings.vertex_ai_model
         elif provider == ProviderName.gemini_vision:

@@ -17,6 +17,7 @@ from app.models.schemas import (
     ProviderFeature,
     ProviderName,
     ProviderRoute,
+    SensorReading,
     ServiceAuditLog,
 )
 from app.utils.phone import normalize_phone
@@ -35,6 +36,8 @@ class AppStore(Protocol):
 
     def save_farmer(self, farmer: FarmerResponse) -> FarmerResponse: ...
 
+    def delete_farmer(self, farmer_id: str) -> bool: ...
+
     def list_farmers(self, limit: int = 100) -> list[FarmerResponse]: ...
 
     def save_ticket(self, ticket: ExpertTicket) -> ExpertTicket: ...
@@ -50,6 +53,12 @@ class AppStore(Protocol):
     def save_delivery_receipt(self, receipt: ChannelDeliveryReceipt) -> ChannelDeliveryReceipt: ...
 
     def list_delivery_receipts(self, limit: int = 100) -> list[ChannelDeliveryReceipt]: ...
+
+    def save_sensor_reading(self, reading: SensorReading) -> SensorReading: ...
+
+    def latest_sensor_reading(self, farmer_id: str, sensor_id: str | None = None) -> SensorReading | None: ...
+
+    def list_sensor_readings(self, farmer_id: str, limit: int = 20) -> list[SensorReading]: ...
 
     def save_alert_run_record(self, record: AlertRunRecord) -> AlertRunRecord: ...
 
@@ -79,6 +88,7 @@ class LocalStore:
         self.tickets: list[ExpertTicket] = []
         self.conversations: list[ConversationMessage] = []
         self.delivery_receipts: list[ChannelDeliveryReceipt] = []
+        self.sensor_readings: list[SensorReading] = []
         self.service_audit_logs: list[ServiceAuditLog] = []
         self.alert_run_records: dict[str, AlertRunRecord] = {}
         self.alert_schedule_config = AlertScheduleConfig()
@@ -87,9 +97,13 @@ class LocalStore:
 
     def create_farmer(self, payload: FarmerCreate) -> FarmerResponse:
         normalized_phone = normalize_phone(payload.phone)
-        data = payload.model_dump()
-        data["phone"] = normalized_phone
-        farmer = FarmerResponse(**data)
+        existing_id = self.farmer_ids_by_phone.get(normalized_phone)
+        if existing_id and existing_id in self.farmers:
+            farmer = merge_farmer_create_payload(self.farmers[existing_id], payload, normalized_phone)
+            self.farmers[farmer.id] = farmer
+            return farmer
+
+        farmer = farmer_from_create_payload(payload, normalized_phone)
         self.farmers[farmer.id] = farmer
         self.farmer_ids_by_phone[normalized_phone] = farmer.id
         return farmer
@@ -130,6 +144,22 @@ class LocalStore:
         self.farmer_ids_by_phone[normalize_phone(farmer.phone)] = farmer.id
         return farmer
 
+    def delete_farmer(self, farmer_id: str) -> bool:
+        farmer = self.farmers.pop(farmer_id, None)
+        if farmer is None:
+            return False
+        normalized_phone = normalize_phone(farmer.phone)
+        if self.farmer_ids_by_phone.get(normalized_phone) == farmer_id:
+            del self.farmer_ids_by_phone[normalized_phone]
+        self.tickets = [ticket for ticket in self.tickets if ticket.farmer_id != farmer_id]
+        self.conversations = [message for message in self.conversations if message.farmer_id != farmer_id]
+        self.sensor_readings = [reading for reading in self.sensor_readings if reading.farmer_id != farmer_id]
+        self.service_audit_logs = [log for log in self.service_audit_logs if log.farmer_id != farmer_id]
+        self.alert_run_records = {
+            key: record for key, record in self.alert_run_records.items() if record.farmer_id != farmer_id
+        }
+        return True
+
     def list_farmers(self, limit: int = 100) -> list[FarmerResponse]:
         return list(self.farmers.values())[:limit]
 
@@ -158,6 +188,23 @@ class LocalStore:
 
     def list_delivery_receipts(self, limit: int = 100) -> list[ChannelDeliveryReceipt]:
         return self.delivery_receipts[-limit:]
+
+    def save_sensor_reading(self, reading: SensorReading) -> SensorReading:
+        self.sensor_readings = [existing for existing in self.sensor_readings if existing.id != reading.id]
+        self.sensor_readings.append(reading)
+        return reading
+
+    def latest_sensor_reading(self, farmer_id: str, sensor_id: str | None = None) -> SensorReading | None:
+        readings = [
+            reading
+            for reading in self.sensor_readings
+            if reading.farmer_id == farmer_id and (sensor_id is None or reading.sensor_id == sensor_id)
+        ]
+        return max(readings, key=lambda reading: reading.timestamp, default=None)
+
+    def list_sensor_readings(self, farmer_id: str, limit: int = 20) -> list[SensorReading]:
+        readings = [reading for reading in self.sensor_readings if reading.farmer_id == farmer_id]
+        return sorted(readings, key=lambda reading: reading.timestamp)[-limit:]
 
     def save_service_audit_log(self, log: ServiceAuditLog) -> ServiceAuditLog:
         self.service_audit_logs.append(log)
@@ -198,6 +245,7 @@ class LocalStore:
         self.tickets.clear()
         self.conversations.clear()
         self.delivery_receipts.clear()
+        self.sensor_readings.clear()
         self.service_audit_logs.clear()
         self.alert_run_records.clear()
         self.alert_schedule_config = AlertScheduleConfig()
@@ -232,11 +280,33 @@ class FirestoreStore:
 
     def create_farmer(self, payload: FarmerCreate) -> FarmerResponse:
         normalized_phone = normalize_phone(payload.phone)
-        data = payload.model_dump()
-        data["phone"] = normalized_phone
-        farmer = FarmerResponse(**data)
+        identity_ref = self.client.collection("farmer_channel_identities").document(normalized_phone)
+        identity_doc = identity_ref.get()
+        if identity_doc.exists:
+            farmer_id = identity_doc.to_dict().get("farmer_id")
+            existing = self.get_farmer(farmer_id) if farmer_id else None
+            if existing is not None:
+                farmer = merge_farmer_create_payload(existing, payload, normalized_phone)
+                self.client.collection("farmers").document(farmer.id).set(farmer.model_dump(mode="json"), merge=True)
+                identity_ref.set(
+                    {"farmer_id": farmer.id, "phone": normalized_phone, "updated_at": datetime.now(UTC).isoformat()},
+                    merge=True,
+                )
+                return farmer
+
+        existing = self._find_farmer_by_normalized_phone(normalized_phone)
+        if existing is not None:
+            farmer = merge_farmer_create_payload(existing, payload, normalized_phone)
+            self.client.collection("farmers").document(farmer.id).set(farmer.model_dump(mode="json"), merge=True)
+            identity_ref.set(
+                {"farmer_id": farmer.id, "phone": normalized_phone, "updated_at": datetime.now(UTC).isoformat()},
+                merge=True,
+            )
+            return farmer
+
+        farmer = farmer_from_create_payload(payload, normalized_phone)
         self.client.collection("farmers").document(farmer.id).set(farmer.model_dump(mode="json"))
-        self.client.collection("farmer_channel_identities").document(normalized_phone).set(
+        identity_ref.set(
             {"farmer_id": farmer.id, "phone": normalized_phone, "updated_at": datetime.now(UTC).isoformat()}
         )
         return farmer
@@ -313,6 +383,27 @@ class FirestoreStore:
         )
         return farmer
 
+    def delete_farmer(self, farmer_id: str) -> bool:
+        farmer = self.get_farmer(farmer_id)
+        if farmer is None:
+            return False
+
+        self.client.collection("farmers").document(farmer_id).delete()
+        identity_ref = self.client.collection("farmer_channel_identities").document(normalize_phone(farmer.phone))
+        identity_doc = identity_ref.get()
+        if identity_doc.exists and identity_doc.to_dict().get("farmer_id") == farmer_id:
+            identity_ref.delete()
+
+        for collection_name in [
+            "expert_tickets",
+            "conversation_messages",
+            "sensor_readings",
+            "service_audit_logs",
+            "alert_run_records",
+        ]:
+            self._delete_farmer_scoped_documents(collection_name, farmer_id)
+        return True
+
     def list_farmers(self, limit: int = 100) -> list[FarmerResponse]:
         docs = self.client.collection("farmers").limit(limit).stream()
         return [FarmerResponse(**doc.to_dict()) for doc in docs]
@@ -361,6 +452,21 @@ class FirestoreStore:
             .stream()
         )
         return list(reversed([ChannelDeliveryReceipt(**doc.to_dict()) for doc in docs]))
+
+    def save_sensor_reading(self, reading: SensorReading) -> SensorReading:
+        self.client.collection("sensor_readings").document(reading.id).set(reading.model_dump(mode="json"))
+        return reading
+
+    def latest_sensor_reading(self, farmer_id: str, sensor_id: str | None = None) -> SensorReading | None:
+        readings = self.list_sensor_readings(farmer_id, limit=100)
+        if sensor_id:
+            readings = [reading for reading in readings if reading.sensor_id == sensor_id]
+        return max(readings, key=lambda reading: reading.timestamp, default=None)
+
+    def list_sensor_readings(self, farmer_id: str, limit: int = 20) -> list[SensorReading]:
+        docs = self.client.collection("sensor_readings").where("farmer_id", "==", farmer_id).stream()
+        readings = [SensorReading(**doc.to_dict()) for doc in docs]
+        return sorted(readings, key=lambda reading: reading.timestamp)[-limit:]
 
     def save_service_audit_log(self, log: ServiceAuditLog) -> ServiceAuditLog:
         self.client.collection("service_audit_logs").document(log.id).set(log.model_dump(mode="json"))
@@ -425,6 +531,42 @@ class FirestoreStore:
             ref = self.client.collection("provider_routes").document(feature.value)
             if not ref.get().exists:
                 ref.set(route.model_dump(mode="json"))
+
+    def _find_farmer_by_normalized_phone(self, normalized_phone: str) -> FarmerResponse | None:
+        docs = self.client.collection("farmers").where("phone", "==", normalized_phone).limit(1).stream()
+        for doc in docs:
+            return FarmerResponse(**doc.to_dict())
+        return None
+
+    def _delete_farmer_scoped_documents(self, collection_name: str, farmer_id: str) -> None:
+        docs = self.client.collection(collection_name).where("farmer_id", "==", farmer_id).stream()
+        for doc in docs:
+            doc.reference.delete()
+
+
+def farmer_from_create_payload(payload: FarmerCreate, normalized_phone: str) -> FarmerResponse:
+    data = payload.model_dump()
+    data["phone"] = normalized_phone
+    return FarmerResponse(**data)
+
+
+def merge_farmer_create_payload(
+    farmer: FarmerResponse,
+    payload: FarmerCreate,
+    normalized_phone: str,
+) -> FarmerResponse:
+    data = farmer.model_dump()
+    incoming = payload.model_dump(exclude_unset=True)
+    incoming["phone"] = normalized_phone
+    farm_payload = incoming.pop("farm", None)
+    for field, value in incoming.items():
+        if value is not None:
+            data[field] = value
+    if farm_payload:
+        farm = farmer.farm.model_dump()
+        farm.update({field: value for field, value in farm_payload.items() if value is not None})
+        data["farm"] = farm
+    return FarmerResponse(**data)
 
 
 def missing_farmer_fields(farmer: FarmerResponse) -> list[str]:

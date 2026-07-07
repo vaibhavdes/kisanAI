@@ -14,6 +14,44 @@ export type ChatMessage = {
   storedContext?: Record<string, string | number | boolean | null | undefined>;
 };
 
+export type SensorReadingPayload = {
+  farmer_id: string;
+  sensor_id: string;
+  source: string;
+  device_type: string;
+  timestamp?: string;
+  latitude?: number;
+  longitude?: number;
+  readings: {
+    soil_moisture?: number | null;
+    soil_temperature_c?: number | null;
+    air_temperature_c?: number | null;
+    humidity_percent?: number | null;
+    rainfall_mm?: number | null;
+    battery_percent?: number | null;
+  };
+};
+
+export type SensorReadingResponse = {
+  saved: boolean;
+  advisory_hint: string;
+  reading: {
+    id: string;
+    farmer_id: string;
+    sensor_id: string;
+    source: string;
+    device_type: string;
+    soil_moisture_risk: string;
+  };
+};
+
+export type LiveTokenResponse = {
+  ready: boolean;
+  model: string;
+  token?: string | null;
+  note: string;
+};
+
 export type ChatPayload = {
   from_phone: string;
   text?: string;
@@ -38,6 +76,8 @@ export type ChatResponse = {
   transcript?: string;
   response_audio_base64?: string;
   response_audio_content_type?: string;
+  media_url?: string;
+  media_content_type?: string;
   delivery_status?: string;
   missing_fields?: string[];
   data_sources?: Record<string, string | number | boolean | null | undefined>;

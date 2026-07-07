@@ -13,6 +13,7 @@ from app.models.schemas import (
 )
 from app.services.call_service import CallService
 from app.services.channel_receipt_service import ChannelReceiptService
+from app.services.service_audit_log_service import ServiceAuditLogService
 from app.services.sms_service import SmsService
 from app.services.twilio_whatsapp_service import TwilioWhatsAppService, twilio_media_store
 from app.services.whatsapp_service import WhatsAppService
@@ -27,17 +28,25 @@ async def twilio_whatsapp_webhook(request: Request) -> Response:
     if not service.validate_webhook(str(request.url), form, request.headers.get("X-Twilio-Signature")):
         raise HTTPException(status_code=403, detail="Invalid Twilio signature")
 
+    payload = service.inbound_payload(form)
     response = WhatsAppService().handle_message(
-        service.inbound_payload(form),
+        payload,
         channel="whatsapp",
         send_outbound=False,
     )
     base_url = service.public_base_url(str(request.base_url))
+    followup_results = service.send_response_media_followups(
+        to_phone=payload.from_phone,
+        response=response,
+        base_url=base_url,
+        dry_run=not settings.twilio_enable_live_send,
+    )
+    _record_twilio_followup_audits(response.farmer_id, payload.from_phone, followup_results)
     return Response(
         content=service.twiml_response(
             response,
             base_url=base_url,
-            status_callback_url=service.status_callback_url(base_url),
+            status_callback_url=None,
         ),
         media_type="text/xml",
     )
@@ -157,6 +166,32 @@ def _clean_channel_phone(value: str) -> str:
 def _messaging_twiml(message: str) -> Response:
     xml = f'<?xml version="1.0" encoding="UTF-8"?><Response><Message>{escape(message)}</Message></Response>'
     return Response(content=xml, media_type="text/xml")
+
+
+def _record_twilio_followup_audits(farmer_id: str | None, phone: str, results) -> None:
+    audit = ServiceAuditLogService()
+    for result in results:
+        audit.record(
+            farmer_id=farmer_id,
+            channel="whatsapp",
+            service="channel_delivery",
+            operation=result.operation or "send_twilio_whatsapp_followup",
+            provider=result.provider,
+            success=result.status in {"sent", "delivered", "queued", "accepted", "sending", "scheduled", "dry_run"},
+            request_body={
+                "phone": phone,
+                "channel": "whatsapp",
+                "dryRun": result.dry_run,
+                "followup": True,
+            },
+            response_body={
+                "status": result.status,
+                "sent": result.sent,
+                "providerMessageId": result.provider_message_id,
+                "accepted": (result.metadata or {}).get("accepted"),
+            },
+            error=result.error,
+        )
 
 
 def _voice_twiml(message: str, *, language: str) -> Response:

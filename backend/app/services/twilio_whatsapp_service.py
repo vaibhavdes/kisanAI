@@ -114,34 +114,54 @@ class TwilioWhatsAppService:
         base_url: str,
         status_callback_url: str | None,
     ) -> str:
-        media_url = self._response_audio_url(response, base_url=base_url)
         return self.messaging_twiml(
             body=response.reply,
-            media_url=media_url,
             status_callback_url=status_callback_url,
         )
+
+    def send_response_media_followups(
+        self,
+        *,
+        to_phone: str,
+        response: WhatsAppWebhookResponse,
+        base_url: str,
+        dry_run: bool,
+    ) -> list[ChannelDeliveryResult]:
+        media_items = []
+        if response.media_url:
+            media_items.append(("Farm health image", response.media_url))
+        audio_url = self._response_audio_url(response, base_url=base_url)
+        if audio_url:
+            media_items.append(("Voice reply", audio_url))
+        return [
+            self.send_whatsapp(
+                to_phone=to_phone,
+                body=caption,
+                media_url=url,
+                dry_run=dry_run,
+            )
+            for caption, url in media_items
+        ]
 
     def messaging_twiml(
         self,
         *,
         body: str,
         media_url: str | None = None,
+        media_urls: list[str] | None = None,
         status_callback_url: str | None = None,
     ) -> str:
         attrs = ""
         if status_callback_url:
             safe_callback = escape(status_callback_url, quote=True)
-            attrs = f' action="{safe_callback}" statusCallback="{safe_callback}"'
-        if media_url:
-            # WhatsApp can drop the text body when audio/video/document media is attached.
-            # Send text and voice as separate session replies so both are delivered.
-            return (
-                '<?xml version="1.0" encoding="UTF-8"?>'
-                "<Response>"
-                f"<Message{attrs}>{escape(body)}</Message>"
-                f"<Message{attrs}><Media>{escape(media_url)}</Media></Message>"
-                "</Response>"
+            attrs = f' statusCallback="{safe_callback}"'
+        all_media_urls = media_urls or ([media_url] if media_url else [])
+        if all_media_urls:
+            # WhatsApp can drop body text when media is attached, so each payload is a separate reply.
+            media_messages = "".join(
+                f"<Message{attrs}><Media>{escape(url)}</Media></Message>" for url in all_media_urls if url
             )
+            return f'<?xml version="1.0" encoding="UTF-8"?><Response><Message{attrs}>{escape(body)}</Message>{media_messages}</Response>'
         return f'<?xml version="1.0" encoding="UTF-8"?><Response><Message{attrs}>{escape(body)}</Message></Response>'
 
     def send_whatsapp(
@@ -200,13 +220,17 @@ class TwilioWhatsAppService:
             response.raise_for_status()
             data = response.json()
         except requests.RequestException as exc:
+            status_code = exc.response.status_code if exc.response is not None else None
+            response_text = exc.response.text[:800] if exc.response is not None else None
             return ChannelDeliveryResult(
                 channel="whatsapp",
                 provider="twilio",
                 operation=self._operation(payload),
                 status="failed",
                 retryable=True,
-                error=str(exc),
+                metadata={"method": "POST", "httpStatus": status_code},
+                raw_status=response_text,
+                error=response_text or str(exc),
             )
 
         status = str(data.get("status") or "accepted")
@@ -326,8 +350,6 @@ class TwilioWhatsAppService:
         public_url = self._publish_response_media(content, content_type, base_url=base_url)
         if public_url:
             return public_url
-        if settings.environment == "production" and (settings.twilio_media_bucket or settings.storage_bucket):
-            return None
         if not base_url:
             return None
         return self._memory_media_url(content, content_type, base_url=base_url)

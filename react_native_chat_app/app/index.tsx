@@ -16,6 +16,7 @@ import {
   Image,
   KeyboardAvoidingView,
   Linking,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -26,7 +27,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { apiBaseUrl, sendChatMessage } from "@/api/client";
+import { apiBaseUrl, saveSensorReading, sendChatMessage } from "@/api/client";
 import { languages } from "@/constants/languages";
 import { autoLanguageCode, copyLanguage, languageForState, uiCopy } from "@/i18n/ui";
 import type { ChatMessage, ChatPayload, ChatResponse } from "@/types/chat";
@@ -322,6 +323,13 @@ function ChatScreen({
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [attachmentsOpen, setAttachmentsOpen] = useState(false);
+  const [sensorOpen, setSensorOpen] = useState(false);
+  const [farmerId, setFarmerId] = useState<string | undefined>();
+  const [soilMoisture, setSoilMoisture] = useState("0.16");
+  const [soilTemp, setSoilTemp] = useState("29.4");
+  const [airTemp, setAirTemp] = useState("34.1");
+  const [humidity, setHumidity] = useState("62");
+  const [rainfall, setRainfall] = useState("0");
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: "welcome",
@@ -348,18 +356,35 @@ function ChatScreen({
 
   async function sendPayload(userMessage: ChatMessage, payload: ChatPayload) {
     const localId = userMessage.id;
+    const processingId = `${Date.now()}-processing`;
     setMessages((current) => [...current, { ...userMessage, status: "sending", time: currentTime() }]);
+    setMessages((current) => [
+      ...current,
+      {
+        id: processingId,
+        text: "Checking farm data...",
+        mine: false,
+        kind: "system",
+        intent: "processing",
+        time: currentTime(),
+      },
+    ]);
     setSending(true);
     try {
       const response = await sendChatMessage({ ...payload, language: payloadLanguage() });
+      if (response.farmer_id) setFarmerId(response.farmer_id);
       setMessages((current) =>
-        current.map((message) => (message.id === localId ? { ...message, status: "sent" } : message)),
+        current
+          .filter((message) => message.id !== processingId)
+          .map((message) => (message.id === localId ? { ...message, status: "sent" } : message)),
       );
       setMessages((current) => [...current, responseToMessage(response, copy)]);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Backend request failed.";
       setMessages((current) =>
-        current.map((item) => (item.id === localId ? { ...item, status: "failed" } : item)),
+        current
+          .filter((item) => item.id !== processingId)
+          .map((item) => (item.id === localId ? { ...item, status: "failed" } : item)),
       );
       setMessages((current) => [
         ...current,
@@ -523,6 +548,65 @@ function ChatScreen({
     );
   }
 
+  async function submitSensorReading() {
+    if (!farmerId) {
+      Alert.alert("Farmer context needed", "Send one message first so the app can identify the farmer.");
+      return;
+    }
+    setSensorOpen(false);
+    try {
+      const response = await saveSensorReading({
+        farmer_id: farmerId,
+        sensor_id: "manual_sensor_01",
+        source: "farmer_app_manual_entry",
+        device_type: "soil_moisture_sensor",
+        timestamp: new Date().toISOString(),
+        readings: {
+          soil_moisture: numberOrNull(soilMoisture),
+          soil_temperature_c: numberOrNull(soilTemp),
+          air_temperature_c: numberOrNull(airTemp),
+          humidity_percent: numberOrNull(humidity),
+          rainfall_mm: numberOrNull(rainfall),
+        },
+      });
+      setMessages((current) => [
+        ...current,
+        {
+          id: `${Date.now()}-sensor`,
+          text: `Sensor reading saved. Moisture risk: ${response.reading.soil_moisture_risk}. ${response.advisory_hint}`,
+          mine: false,
+          kind: "system",
+          intent: "sensor_reading",
+          time: currentTime(),
+        },
+      ]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Sensor reading failed.";
+      Alert.alert("Sensor reading failed", message);
+    }
+  }
+
+  async function startLiveCall() {
+    const voiceNumber = "+17752698657";
+    const canOpen = await Linking.canOpenURL(`tel:${voiceNumber}`);
+    if (!canOpen) {
+      Alert.alert("Voice call", `Call ${voiceNumber} from your phone to test Kisan Alert voice advisory.`);
+      return;
+    }
+    await Linking.openURL(`tel:${voiceNumber}`);
+    setMessages((current) => [
+      ...current,
+      {
+        id: `${Date.now()}-live`,
+        text: `Opening phone call to ${voiceNumber}. The Twilio number should be configured to POST voice webhooks to /api/v1/twilio/voice.`,
+        mine: false,
+        kind: "system",
+        intent: "voice_call",
+        time: currentTime(),
+      },
+    ]);
+  }
+
   const maxBubbleWidth = Math.min(width * 0.78, 620);
 
   return (
@@ -610,8 +694,40 @@ function ChatScreen({
           <AttachmentAction label={copy.camera} icon="📷" onPress={() => attachPhoto(true)} />
           <AttachmentAction label={copy.gallery} icon="🖼" onPress={() => attachPhoto(false)} />
           <AttachmentAction label={copy.location} icon="📍" onPress={shareLocation} />
+          <AttachmentAction label="Sensor" icon="🌡" onPress={() => setSensorOpen(true)} />
+          <AttachmentAction label="Live" icon="☎" onPress={startLiveCall} />
         </View>
       ) : null}
+
+      <Modal visible={sensorOpen} transparent animationType="fade" onRequestClose={() => setSensorOpen(false)}>
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.28)", justifyContent: "center", padding: 18 }}>
+          <View style={{ backgroundColor: "#fff", borderRadius: 18, padding: 16, gap: 12 }}>
+            <Text selectable style={{ fontSize: 18, fontWeight: "900", color: "#172017" }}>
+              Sensor reading
+            </Text>
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <SensorInput label="Soil moisture" value={soilMoisture} onChangeText={setSoilMoisture} />
+              <SensorInput label="Rain mm" value={rainfall} onChangeText={setRainfall} />
+            </View>
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <SensorInput label="Soil C" value={soilTemp} onChangeText={setSoilTemp} />
+              <SensorInput label="Air C" value={airTemp} onChangeText={setAirTemp} />
+              <SensorInput label="Humidity %" value={humidity} onChangeText={setHumidity} />
+            </View>
+            <View style={{ flexDirection: "row", gap: 10, justifyContent: "flex-end" }}>
+              <Pressable onPress={() => setSensorOpen(false)} style={{ paddingHorizontal: 14, paddingVertical: 10 }}>
+                <Text selectable={false} style={{ color: "#526052", fontWeight: "900" }}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={submitSensorReading}
+                style={{ backgroundColor: whatsAppGreen, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 10 }}
+              >
+                <Text selectable={false} style={{ color: "#fff", fontWeight: "900" }}>Save</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <View
         style={{
@@ -785,6 +901,35 @@ function AttachmentAction({ label, icon, onPress }: { label: string; icon: strin
   );
 }
 
+function SensorInput({
+  label,
+  value,
+  onChangeText,
+}: {
+  label: string;
+  value: string;
+  onChangeText: (value: string) => void;
+}) {
+  return (
+    <View style={{ flex: 1, gap: 5 }}>
+      <Text selectable style={{ color: "#526052", fontSize: 12, fontWeight: "800" }}>{label}</Text>
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        keyboardType="decimal-pad"
+        style={{
+          minHeight: 42,
+          borderRadius: 12,
+          borderWidth: 1,
+          borderColor: border,
+          paddingHorizontal: 10,
+          color: "#172017",
+        }}
+      />
+    </View>
+  );
+}
+
 function MessageBubble({
   message,
   maxWidth,
@@ -926,7 +1071,8 @@ function responseToMessage(response: ChatResponse, copy: ReturnType<typeof uiCop
     id: `${Date.now()}-assistant`,
     text: response.transcript ? `${response.reply}\n\n${copy.heard}: ${response.transcript}` : response.reply,
     mine: false,
-    kind: audioUri ? "audio" : "text",
+    kind: response.media_url ? "image" : audioUri ? "audio" : "text",
+    mediaUri: response.media_url || undefined,
     audioUri,
     audioContentType: response.response_audio_content_type,
     intent: response.intent,
@@ -993,6 +1139,11 @@ function audioMimeType(uri: string, fallback = "audio/mp4") {
   if (lower.endsWith(".m4a") || lower.endsWith(".mp4") || lower.endsWith(".aac")) return "audio/mp4";
   if (lower.endsWith(".webm")) return "audio/webm";
   return fallback;
+}
+
+function numberOrNull(value: string): number | null {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function currentTime() {

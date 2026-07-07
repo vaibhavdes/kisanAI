@@ -271,19 +271,25 @@ class ProactiveAlertService:
 
     def _satellite_message(self, farmer: FarmerResponse, crop: str, signal) -> str:
         location = ", ".join(part for part in [farmer.village, farmer.district] if part and part != "unknown")
-        action = "Keep normal monitoring."
+        action = "Check 3-4 spots in the field today or tomorrow and keep normal monitoring."
         if signal.water_stress == "high":
-            action = "Check soil moisture today and irrigate if the root zone is dry."
+            action = "Check soil moisture today. If the top 2-3 inches are dry, give light irrigation."
         elif signal.water_stress == "medium":
-            action = "Inspect the field within 24 hours and avoid moisture stress."
+            action = "Inspect the field within 24 hours and prepare light irrigation if moisture is low."
         if signal.chlorophyll_status == "low":
-            action += " Leaf color/chlorophyll signal is low, so ask an expert before nitrogen correction."
+            action += " If leaves look yellow, send a photo or ask an expert before nitrogen correction."
         return (
-            f"Satellite update for {crop}"
-            f"{f' at {location}' if location else ''}: NDVI {signal.ndvi}, NDWI {signal.ndwi}, NDMI {signal.ndmi}. "
-            f"Water stress is {signal.water_stress}, vegetation is {signal.vegetation_status}, chlorophyll is {signal.chlorophyll_status}. "
-            f"{action} Source: {signal.source}."
+            f"Satellite farm health update for {crop}{f' at {location}' if location else ''}: "
+            f"crop growth {signal.vegetation_status}, water stress {signal.water_stress}, "
+            f"moisture {signal.moisture_status}, chlorophyll {signal.chlorophyll_status}. "
+            f"Advice: {action} Technical: NDVI {signal.ndvi}, NDMI {signal.ndmi}, NDWI {signal.ndwi}. "
+            f"Source: {self._satellite_source_label(signal.source)}."
         )
+
+    def _satellite_source_label(self, source: str | None) -> str:
+        if source == "earth_engine_sentinel_2":
+            return "Google Earth Engine / Sentinel-2"
+        return source or "satellite provider"
 
     def _crop_for_alert(self, farmer: FarmerResponse, requested_crop: str) -> str:
         if requested_crop and requested_crop != "crop":
