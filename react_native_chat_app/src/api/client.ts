@@ -1,0 +1,57 @@
+import type { ChatPayload, ChatResponse, LiveTokenResponse, SensorReadingPayload, SensorReadingResponse } from "@/types/chat";
+import { Platform } from "react-native";
+
+declare global {
+  interface Window {
+    KISAN_AI_API_URL?: string;
+  }
+}
+
+const runtimeUrl = typeof window !== "undefined" ? window.KISAN_AI_API_URL : undefined;
+const fallbackUrl =
+  runtimeUrl ||
+  process.env.EXPO_PUBLIC_API_URL ||
+  (Platform.OS === "web" ? "http://127.0.0.1:8080" : "http://10.0.2.2:8080");
+
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+async function postJson<T>(path: string, body: unknown): Promise<T> {
+  const response = await fetch(`${fallbackUrl}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    const detail = typeof data.detail === "string" ? data.detail : `HTTP ${response.status}`;
+    throw new ApiError(detail, response.status);
+  }
+
+  return response.json() as Promise<T>;
+}
+
+export function sendChatMessage(payload: ChatPayload): Promise<ChatResponse> {
+  return postJson<ChatResponse>("/api/v1/chat/message", payload);
+}
+
+export function saveSensorReading(payload: SensorReadingPayload): Promise<SensorReadingResponse> {
+  return postJson<SensorReadingResponse>("/api/v1/sensors/readings", payload);
+}
+
+export function createLiveToken(farmerId?: string, language = "hi-IN"): Promise<LiveTokenResponse> {
+  return postJson<LiveTokenResponse>("/api/v1/live/token", {
+    farmer_id: farmerId,
+    language,
+  });
+}
+
+export const apiBaseUrl = fallbackUrl;

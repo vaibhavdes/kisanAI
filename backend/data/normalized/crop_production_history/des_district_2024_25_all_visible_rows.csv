@@ -1,0 +1,30 @@
+state,district,crop,season,crop_year,area_hectare,production_tonne,yield_kg_per_hectare
+Andaman And Nicobar Islands,Nicobars,Rice,Kharif,2024,0,0,735
+Andhra Pradesh,Alluri Sitharama Raju,Rice,Kharif,2024,0.56,1.76,3155
+Arunachal Pradesh,Anjaw,Rice,Kharif,2024,0.04,0.04,1123
+Assam,Baksa,Rice,Kharif,2024,0.84,1.73,2067
+Bihar,Araria,Rice,Kharif,2024,0.29,0.64,2205
+Chandigarh,Chandigarh,Rice,Kharif,2024,0,0,3667
+Goa,North Goa,Rice,Kharif,2024,0.11,0.27,2537
+Gujarat,Ahmedabad,Rice,Kharif,2024,1.51,3.54,2342
+Haryana,Ambala,Rice,Kharif,2024,0.84,3.55,4233
+Himachal Pradesh,Bilaspur,Rice,Kharif,2024,0.01,0.01,951
+Jammu And Kashmir,Anantnag,Rice,Kharif,2024,0.22,0.65,2955
+Jharkhand,Bokaro,Rice,Kharif,2024,0.28,0.36,1310
+Karnataka,Bagalkote,Rice,Kharif,2024,0,0,3394
+Kerala,Alappuzha,Rice,Kharif,2024,0.06,0.2,3212
+Ladakh,Kargil,Wheat,Rabi,2024,0.02,0.04,1904
+Madhya Pradesh,Agar-Malwa,Rice,Kharif,2024,0.01,0.01,1736
+Maharashtra,Ahilyanagar,Rice,Kharif,2024,0.19,0.52,2683
+Mizoram,Aizawl,Rice,Kharif,2024,0.02,0.03,1251
+Nagaland,Chumoukedima,Rice,Kharif,2024,0.17,0.32,1942
+Odisha,Angul,Rice,Kharif,2024,0.88,2.61,2956
+Puducherry,Karaikal,Rice,Kharif,2024,0.01,0.02,1914
+Punjab,Amritsar,Rice,Kharif,2024,1.82,6.27,3438
+Rajasthan,Ajmer,Rice,Kharif,2024,0,0,2593
+Sikkim,Gangtok,Rice,Kharif,2024,0.02,0.02,1246
+Tamil Nadu,Ariyalur,Rice,Kharif,2024,0.09,0.29,3381
+Telangana,Adilabad,Rice,Kharif,2024,0.01,0.03,3640
+Tripura,Dhalai,Rice,Kharif,2024,0.24,0.64,2695
+Uttar Pradesh,Agra,Rice,Kharif,2024,0.17,0.47,2729
+Uttarakhand,Almora,Rice,Kharif,2024,0.09,0.13,1393
