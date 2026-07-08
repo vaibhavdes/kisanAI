@@ -1,3 +1,5 @@
+Project Demo Video Link : https://youtu.be/D204o7oubEM
+
 # Kisan Alert
 
 Kisan Alert is a FastAPI + React Native/Web prototype for Track 4: Smart Water, Crop and Advisory System. It gives small farmers multilingual advisory through web/app, WhatsApp, SMS and outbound voice alerts.
